@@ -7,9 +7,11 @@ scanner_files : lex.yy.c
 lex.yy.c : translator_files parser_files ass4_15CS30035.l
 	flex ass4_15CS30035.l
 
-parser_files : ass4_15CS30035.tab.hh ass4_15CS30035.tab.cc
+parser_files : ass4_15CS30035.tab.cc
 
-ass4_15CS30035.tab.hh ass4_15CS30035.tab.cc : translator_files ass4_15CS30035.y
+ass4_15CS30035.tab.cc : ass4_15CS30035.tab.hh
+
+ass4_15CS30035.tab.hh : translator_files ass4_15CS30035.y
 	bison --language=c++ ass4_15CS30035.y
 
 translator_files : ass4_15CS30035_translator.h ass4_15CS30035_translator.cxx

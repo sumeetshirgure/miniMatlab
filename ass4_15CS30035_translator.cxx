@@ -23,18 +23,18 @@ int mm_translator::translate(const std::string & _file) {
   }
   
   yy::mm_parser parser(*this);
-
+  
   parser.set_debug_level(trace_parse);
 
   int result = 0;
   try {
     result = parser.parse();
   } catch ( ... ) {
-    return 1;
+    result = 1;
   }
-
+  
   end_scan();
-
+  
   return result;
 }
 
@@ -48,8 +48,22 @@ void mm_translator::error (const std::string &msg) {
 
 /* Main translation driver */
 int main( int argc , char * argv[] ){
+  using namespace std ;
+  using namespace yy ;
+
+  if(argc < 2) {
+    cerr << "Enter a .mm file to translate" << endl;
+    return 1;
+  }
   
   // read and translate files
+  mm_translator translator;
+  translator.trace_parse = 0;
+  translator.trace_scan = 1;
+  int result = translator.translate(argv[1]);
+  
+  if(result) cout << " Translation failed " << endl;
+  else cout << " Translation completed successfully " << endl;
   
   return 0;
 }
