@@ -1,5 +1,6 @@
 %{
 #include <string>
+#include <climits>
 #include "ass4_15CS30035_translator.h"
 #include "ass4_15CS30035.tab.hh"
   
@@ -83,6 +84,22 @@ zero_constant "0"
 {string_literal} return yy::mm_parser::make_STRING_LITERAL(yytext,scan_loc);
 
 {character_constant} return yy::mm_parser::make_CHARACTER_CONSTANT(yytext,scan_loc);
+
+{integer_constant} {
+  long val = strtol(yytext,NULL,10);
+  if( val < INT_MIN or val > INT_MAX or errno == ERANGE ){
+    translator.error(scan_loc,"Warning : Integer constant out of range.");
+  }
+  return yy::mm_parser::make_INTEGER_CONSTANT(val,scan_loc);
+};
+
+{floating_const} {
+  double val = strtod(yytext,NULL);
+  if( errno == ERANGE ){
+    translator.error(scan_loc,"Warning : Floating constant out of range.");
+  }
+  return yy::mm_parser::make_FLOATING_CONSTANT(val,scan_loc);
+};
 
 "{" return yy::mm_parser::make_LBRACE(scan_loc);
 "}" return yy::mm_parser::make_RBRACE(scan_loc);

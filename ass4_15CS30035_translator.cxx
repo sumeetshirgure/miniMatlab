@@ -56,14 +56,23 @@ int main( int argc , char * argv[] ){
     return 1;
   }
   
-  // read and translate files
-  mm_translator translator;
-  translator.trace_parse = 0;
-  translator.trace_scan = 1;
-  int result = translator.translate(argv[1]);
-  
-  if(result) cout << " Translation failed " << endl;
-  else cout << " Translation completed successfully " << endl;
+  bool trace_scan = false , trace_parse = false;
+  for(int i=1;i<argc;i++){
+    string cmd = string(argv[i]);
+    if(cmd == "--trace-scan") {
+      trace_scan = true;
+    } else if(cmd == "--trace-parse") {
+      trace_parse = true;
+    } else {
+      mm_translator translator;
+      translator.trace_parse = trace_parse;
+      translator.trace_scan = trace_scan;
+      int result = translator.translate(cmd);
+      if(result) cout << cmd << " : Translation failed " << endl;
+      else cout << cmd << " : Translation completed successfully " << endl;
+    }
+  }
   
   return 0;
 }
+0
