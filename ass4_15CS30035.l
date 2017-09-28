@@ -142,6 +142,12 @@ zero_constant "0"
 ";" return yy::mm_parser::make_SEMICOLON(scan_loc);
 "," return yy::mm_parser::make_COMMA(scan_loc);
 
+<comment,multicomment><<EOF>> {
+  BEGIN(INITIAL);
+  std::string err = "EOF encountered inside comment" ;
+  throw yy::mm_parser::syntax_error(scan_loc , err);
+}
+
 <<EOF>> return yy::mm_parser::make_END(scan_loc);
 
 . {

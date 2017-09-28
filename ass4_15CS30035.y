@@ -157,8 +157,8 @@ primary_expression {
   
 }
 |
-/* Dereference matrix element */
-postfix_expression "[" optional_expression "]" {
+/* Dereference matrix element. Empty expression not allowed. */
+postfix_expression "[" expression "]" {
   
 }
 |
@@ -653,11 +653,7 @@ external_declarations "EOF" {
 external_declarations :
 %empty
 |
-external_declaration {
-  
-}
-|
-external_declaration external_declaration{
+external_declarations external_declaration{
   
 };
 
