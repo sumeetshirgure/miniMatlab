@@ -13,6 +13,7 @@
 
 %code requires {
 #include <string>
+#include "types.h"
   class mm_translator;
  }
 
@@ -109,15 +110,6 @@ COMMA ","
 /**************************************************/
 
 
-/**************************************************/
-/**********Begin non-terminal definitions**********/
-
-%type <int>
-translation_unit
-;
-
-/************End non-terminal definitions**********/
-/**************************************************/
 
 /* Parse debugger */
 %printer { yyoutput << $$ ; } <int> ;
@@ -394,35 +386,37 @@ assignment_expression {
 /* Also since only one type specifier is supported , `declaration_specifiers' is omitted */
 declaration :
 type_specifier initialized_declarator_list ";" {
-
+  
+  translator.typeContext.pop();
 }
 ;
 
+%type <DataType> type_specifier;
 type_specifier :
 "void" {
-  
+  translator.typeContext.push( MM_VOID_TYPE );
 }
 |
 "char" {
-  
+  translator.typeContext.push( MM_CHAR_TYPE );
 }
 |
 "int" {
-  
+  translator.typeContext.push( MM_INT_TYPE );
 }
 |
 "double" {
-  
+  translator.typeContext.push( MM_DOUBLE_TYPE );
 }
 |
 "Matrix" {
-  
+  translator.typeContext.push( MM_MATRIX_TYPE );
 }
 ;
 
 initialized_declarator_list :
 initialized_declarator {
-
+  
 }
 |
 initialized_declarator_list "," initialized_declarator {
@@ -432,44 +426,72 @@ initialized_declarator_list "," initialized_declarator {
 
 initialized_declarator :
 declarator {
-  /* TODO : Reminder for future self :
-     Take care of errors like : void foo(int a = 2, int b);
-  */
+  
 }
 |
 declarator "=" initializer {
-
+  /* TODO : check types and optionally initalize expression */
+  // also consider init_decl -> decl = asgn_expr | init_row_list
 }
 ;
 
+%type <DataType> declarator;
 declarator :
 optional_pointer direct_declarator {
-
+  $$ = $2;
+  if($2 == MM_MATRIX_ROW_TYPE) {
+    throw syntax_error( @$ , "Incompatible type for matrix declaration" );
+  }
+  translator.typeContext.top().pointers -= $1;
 }
 ;
 
+%type <int> optional_pointer;
 optional_pointer :
-%empty
+%empty {
+  $$ = 0;
+}
 |
 optional_pointer "*" {
-  
+  translator.typeContext.top().pointers++;
+  $$ = $1 + 1;
 }
 ;
 
+%type <DataType> direct_declarator;
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
-  
+  DataType curType (translator.typeContext.top()) ;
+  std::cerr<<curType.pointers<<','<<curType.typecode<<std::endl;
+  $$ = translator.typeContext.top();
+}
+|
+/* Function declaration */
+IDENTIFIER "(" optional_parameter_list ")" {
+  DataType curType (translator.typeContext.top()) ;
+  std::cerr << $1 << " : "
+	    << curType.pointers
+	    << "," << curType.typecode
+	    << std::endl;
+  $$ = MM_FUNC_TYPE;
 }
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. */
 direct_declarator "[" expression "]" {
   // only 2-dimensions to be supported
-}
-|
-/* Function declaration */
-IDENTIFIER "(" optional_parameter_list ")" {
-
+  DataType curType = $1;
+  if( curType == MM_MATRIX_TYPE ) {
+    // dimensions cannot be specified while declaring pointers to matrices
+    // store expression value in m[0]
+    $$ = MM_MATRIX_ROW_TYPE;
+  } else if( curType == MM_MATRIX_ROW_TYPE ) {
+    // store expression value in m[4]
+    $$ = MM_DOUBLE_TYPE;
+  } else {
+    std::cerr<<curType.pointers<<','<<curType.typecode<<std::endl;
+    throw syntax_error( @$ , "Incompatible type for matrix declaration" );
+  }
 }
 ;
 
@@ -491,7 +513,8 @@ parameter_list "," parameter_declaration {
 
 parameter_declaration :
 type_specifier declarator {
-
+  
+  translator.typeContext.pop();
 }
 ;
 
@@ -670,12 +693,15 @@ function_definition {
 function_definition :
 type_specifier declarator compound_statement {
   /* Check if declarator has a function definition inside or not */
+
+  translator.typeContext.pop();
 }
 ;
 
 %%
 
-/* Bison parser error . Sends a message to the translator. Aborts any further parsing. */
+/* Bison parser error . 
+   Sends a message to the translator and aborts any further parsing. */
 void yy::mm_parser::error (const location_type& loc,const std::string &msg) {
   translator.error(loc,msg);
   throw syntax_error(loc,msg);
