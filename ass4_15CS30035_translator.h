@@ -26,6 +26,8 @@ const DataType MM_MATRIX_TYPE(0,5);
 const DataType MM_FUNC_TYPE(0,6);
 const DataType MM_MATRIX_ROW_TYPE(0,7); // implicit
 
+#include "symbols.h"
+
 /**
    Minimatlab translator class. An mm_translator object is used
    to instantiate a translation for every requested file.
@@ -55,9 +57,18 @@ public:
   void emit( const Taco & );
   void printQuadArray();
   size_t nextInstruction();
+
+  // Parsing context information
   
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
+
+  /* Symbol table of the current locality */
+  std::stack<SymbolTable> environment;
+
+  /* The global symbol table */
+  SymbolTable globalST;
+  
 };
 
 #endif /* ! MM_TRANSLATOR_H */

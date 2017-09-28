@@ -4,6 +4,9 @@
 /* Constructor for translator */
 mm_translator::mm_translator() :
   trace_scan(false) , trace_parse(false) {
+  
+  environment.push(globalST);// push the global symbol table
+  
 }
 
 /* Destructor for translator */

@@ -58,8 +58,9 @@ public:
   OpCode opCode;
   // z is result and x,y are 1st and 2nd operands respectively
   std::string z , x , y;
-  Taco(OpCode code,std::string _z = "",std::string _x = "",std::string _y="") :
+  Taco(OpCode code,const std::string &_z="",const std::string &_x="",const std::string &_y="") :
     opCode(code),z(_z),x(_x),y(_y){}
+  virtual ~Taco(){}
 };
 
 /* 3ACode printer */
