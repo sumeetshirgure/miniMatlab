@@ -9,7 +9,10 @@
 
 #define YY_DECL yy::mm_parser::symbol_type yylex(mm_translator& translator)
 YY_DECL;
-  
+
+/* Include 3 address code definitions */
+#include "quads.h"
+
 /**
    Minimatlab translator class. An mm_translator object is used to instantiate
    a translation for every requested file.
@@ -29,11 +32,16 @@ public:
   int translate (const std::string&);
   std::string file;
   bool trace_parse;
-    
+  
   // error handlers
   void error(const yy::location&,const std::string&);
   void error(const std::string&);
-    
+
+  // Code generation
+  std::vector<Taco> quadArray; // Address of a taco is its index in quadArray
+  void emit( const Taco & );
+  void printQuadArray();
+  size_t nextInstruction();
 };
 
 #endif /* ! MM_TRANSLATOR_H */

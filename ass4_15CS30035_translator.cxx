@@ -46,6 +46,20 @@ void mm_translator::error (const std::string &msg) {
   std::cerr << file << " : " << msg << std::endl;
 }
 
+void mm_translator::emit (const Taco & taco) {
+  quadArray.emplace_back( taco );
+}
+
+void mm_translator::printQuadArray () {
+  for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
+    std::cout << quadArray[idx] << std::endl;
+  }
+}
+
+size_t mm_translator::nextInstruction() {
+  return quadArray.size();
+}
+
 /* Main translation driver */
 int main( int argc , char * argv[] ){
   using namespace std ;
@@ -69,7 +83,10 @@ int main( int argc , char * argv[] ){
       translator.trace_scan = trace_scan;
       int result = translator.translate(cmd);
       if(result) cout << cmd << " : Translation failed " << endl;
-      else cout << cmd << " : Translation completed successfully " << endl;
+      else {
+	translator.printQuadArray();
+	cout << cmd << " : Translation completed successfully " << endl;
+      }
     }
   }
   
