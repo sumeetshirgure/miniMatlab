@@ -49,17 +49,32 @@ public:
   void printQuadArray();
   size_t nextInstruction();
 
+  // Temporary symbol generation
+  int temporaryCount ;
+  // generate a temporary and store it in the current table.
+  // return the generated symbol's reference
+  Symbol & genTemp( size_t , DataType & ) ;
+
+  // Print all tables
+  void printSymbolTable();
+  
   // Parsing context information
+  /* The global symbol table */
+  SymbolTable & globalTable ();
+  
+  /* Symbol table of the current locality */
+  std::vector<SymbolTable> tables;
+  std::stack<int> environment;
+  
+  /* Pushes a new environment and returns a pointer to it */
+  size_t newEnvironment();
+  size_t currentEnvironment();
+  void popEnvironment();
   
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
-
-  /* Symbol table of the current locality */
-  std::stack<SymbolTable> environment;
-
-  /* The global symbol table */
-  SymbolTable globalST;
   
+  /* std::stack<Symbol> declarationContext ; */
 };
 
 #endif /* ! MM_TRANSLATOR_H */

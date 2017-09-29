@@ -465,7 +465,7 @@ direct_declarator :
 IDENTIFIER {
   DataType &  curType = translator.typeContext.top() ;
   std::cerr << $1 << " : of type " << curType << std::endl;
-  $$ = translator.typeContext.top();
+  $$ = curType;
 }
 |
 /* Function declaration */
@@ -530,7 +530,7 @@ assignment_expression {
 }
 |
 "{" initializer_row_list "}" {
-
+  
 }
 ;
 
@@ -573,7 +573,7 @@ initializer_row "," expression {
 
 statement :
 compound_statement {
-
+  
 }
 |
 expression_statement {
@@ -594,8 +594,29 @@ jump_statement {
 ;
 
 compound_statement :
-"{" optional_block_item_list "}" {
+"{" {
+  /* LBrace encountered : push a new symbol table and link it to its parent */
+  size_t oldEnv = translator.currentEnvironment();
+  size_t newEnv = translator.newEnvironment();
 
+  /* ** TODO : create a declaration context stack and change the %type of declarator to Symbol */
+  
+  // if declarationContext.top_symbol.type == funct_type and if currEnv is global
+  //   then and only then declare a new function symbol and link it to its table
+  //   also pop the declaration context of the function
+  // else create a void temporary and push it into the current
+  //   symbol table with its child as newEnv
+  
+  DataType voidPointer = MM_VOID_TYPE; voidPointer.pointers++;
+  
+  Symbol & temp = translator.genTemp( oldEnv, voidPointer );
+  temp.child = newEnv;
+  
+} optional_block_item_list "}" {
+  
+  
+  
+  translator.popEnvironment();
 }
 ;
 
@@ -603,7 +624,7 @@ optional_block_item_list :
 %empty
 |
 optional_block_item_list block_item {
-
+  
 }
 ;
 
@@ -697,14 +718,20 @@ function_definition {
 ;
 
 function_definition :
-type_specifier declarator compound_statement {
+type_specifier function_declarator compound_statement {
+  /* Consider funcition_definition -> type_specifier function_declarator compound_statement */
+
+  translator.typeContext.pop();
+}
+;
+
+function_declarator :
+optional_pointer direct_declarator {
   /* Check if declarator has a function definition inside or not */
   if( $2 != MM_FUNC_TYPE ) {
     throw syntax_error( @$ , " Improper function definition : parameter list not found." );
   }
-  translator.typeContext.pop();
 }
-;
 
 %%
 

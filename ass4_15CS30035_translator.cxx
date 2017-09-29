@@ -4,13 +4,16 @@
 /* Constructor for translator */
 mm_translator::mm_translator() :
   trace_scan(false) , trace_parse(false) {
-  
-  environment.push(globalST);// push the global symbol table
-  
+
+  temporaryCount = 0; // initialize tempCount to 0  
+  newEnvironment(); // initialize global table 
 }
 
 /* Destructor for translator */
-mm_translator::~mm_translator() { }
+mm_translator::~mm_translator() {
+  tables.clear();
+  while( not environment.empty() ) environment.pop();
+}
 
 /**
  * Translate file
@@ -63,6 +66,38 @@ size_t mm_translator::nextInstruction() {
   return quadArray.size();
 }
 
+SymbolTable & mm_translator::globalTable() {
+  return tables[0];
+}
+
+size_t mm_translator::newEnvironment() {
+  size_t idx = tables.size();
+  environment.push(idx);// push the address to new symbol table
+  tables.push_back(SymbolTable(idx));
+  return idx;
+}
+
+size_t mm_translator::currentEnvironment() {
+  return environment.top();
+}
+
+void mm_translator::popEnvironment() {
+  environment.pop();
+}
+
+Symbol & mm_translator::genTemp(size_t idx , DataType & type) {
+  std::string tempId = "t#" + std::to_string(++temporaryCount);
+  /* # so it won't collide with any existing non-temporary entries */
+  return tables[idx].lookup(tempId,type);
+}
+
+/* Print the entire symbol table */
+void mm_translator::printSymbolTable() {
+  for( int i = 0; i < tables.size() ; i++ ) {
+    std::cout << tables[i] << std::endl;
+  }
+}
+
 /* Main translation driver */
 int main( int argc , char * argv[] ){
   using namespace std ;
@@ -85,9 +120,11 @@ int main( int argc , char * argv[] ){
       translator.trace_parse = trace_parse;
       translator.trace_scan = trace_scan;
       int result = translator.translate(cmd);
-      if(result) cout << cmd << " : Translation failed " << endl;
+      if(result != 0) cout << cmd << " : Translation failed " << endl;
       else {
 	translator.printQuadArray();
+	cout << endl;
+	translator.printSymbolTable();
 	cout << cmd << " : Translation completed successfully " << endl;
       }
     }
