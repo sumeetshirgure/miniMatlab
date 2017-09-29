@@ -32,9 +32,10 @@ public:
   
   size_t offset; // offset w.r.t current SymbolTable
   
-  int child; // address to the possible nested table (all of which are translator object)
-  
-  Symbol ( const Symbol & );
+  size_t child; // address to the possible nested table (all of which are translator object)
+
+  /* Default constructor */
+  Symbol ( );
   
   /* Construct empty symbol */
   Symbol(const std::string&,const DataType &,size_t offset);
@@ -53,17 +54,19 @@ public:
   
   size_t id;
   
+  size_t parent;
+  
   std::vector<Symbol> table;
   
   size_t offset;
   
-  // insert symbol into this table
-  Symbol & insert(Symbol &) ;
-  
-  // search a symbol by its (id,type)
-  // returns the symbol reference if it exists in table
-  // if not , returns a dummy symbol which must be initialized by the caller
-  Symbol& lookup (const std::string &, DataType &) ;
+  /*Search a symbol by its id
+    When createNew is off
+      Returns the symbol reference if it exists in table.
+      If not , returns a dummy symbol which must be initialized by the caller.
+    If createNew is on , throws an integer if id already exists, otherwise the same.
+  */
+  Symbol& lookup (const std::string &, DataType &, bool createNew) ;
   
   // construct ST
   SymbolTable(size_t);

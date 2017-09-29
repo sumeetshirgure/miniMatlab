@@ -14,6 +14,7 @@
 %code requires {
 #include <string>
 #include "types.h"
+#include "symbols.h"
   class mm_translator;
  }
 
@@ -432,16 +433,25 @@ declarator {
 declarator "=" initializer {
   /* TODO : check types and optionally initalize expression */
   // also consider init_decl -> decl = asgn_expr | init_row_list
+  if( $1->type == MM_INT_TYPE ) {
+    std::cerr << "~ " << $1->id << " = " << 42 << std::endl;
+    $1->isInitialized = true;
+    $1->value.intVal = 42;
+  }
 }
 ;
 
-%type <DataType> declarator;
+%type <Symbol*> declarator;
 declarator :
 optional_pointer direct_declarator {
-  $$ = $2;
-  if( $2.malformedType() ) {
+
+  if( $2->type.isMalformedType() ) {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
-  } else std::cerr << "~ " << $2 << std::endl;
+  } else {
+    std::cerr << "$#" << translator.currentEnvironment()
+	      << "~> " << $2->id << " , " << $2->type << std::endl;
+  }
+  $$ = $2;
   
   translator.typeContext.top().pointers -= $1;
 }
@@ -459,42 +469,84 @@ optional_pointer "*" {
 }
 ;
 
-%type <DataType> direct_declarator;
+%type <Symbol*> direct_declarator;
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
   DataType &  curType = translator.typeContext.top() ;
-  std::cerr << $1 << " : of type " << curType << std::endl;
-  $$ = curType;
+  //std::cerr << "$#" << translator.currentEnvironment()
+  //	    << " : " << $1 << " : of type " << curType << std::endl;
+  SymbolTable & table = translator.tables[translator.currentEnvironment()];
+
+  try {
+    // create a new symbol in current scope
+    Symbol & newSymbol = table.lookup( $1 , curType , true );
+    $$ = & newSymbol;
+  } catch ( ... ) {
+    /* Already declared in current scope */
+    throw syntax_error( @$ , $1 + " has already been declared in this scope." );
+  }
 }
 |
 /* Function declaration */
-IDENTIFIER "(" optional_parameter_list ")" {
-  DataType &  curType = translator.typeContext.top() ;  
-  std::cerr << $1 << " : of return type " << curType << std::endl;  
-  $$ = MM_FUNC_TYPE;
+IDENTIFIER "(" {
+  
+  /* Create a new environment (to store the parameters) */
+  size_t oldEnv = translator.currentEnvironment();
+  size_t newEnv = translator.newEnvironment();
+  
+  SymbolTable & currTable = translator.tables[newEnv];
+  currTable.parent = oldEnv;
+  
+  DataType &  curType = translator.typeContext.top() ;
+  currTable.lookup("#ret" , curType , false);// push return type
+  
+} optional_parameter_list ")" {
+
+  size_t currEnv = translator.currentEnvironment();
+  SymbolTable & currTable = translator.tables[currEnv];
+  
+  /* TODO : Push parameter symbols */
+  
+  translator.popEnvironment();
+  
+  try {
+    SymbolTable & outerTable = translator.tables[translator.currentEnvironment()];
+    DataType symbolType = MM_FUNC_TYPE ;
+    Symbol & newSymbol = outerTable.lookup( $1 , symbolType , true );
+    newSymbol.child = currEnv;
+    $$ = & newSymbol;
+  } catch ( ... ) {
+    /* Already declared in current scope */
+    throw syntax_error( @$ , $1 + " has already been declared in this scope." );
+  }
+  
+  std::cerr<<"$#"<<"("<<(&$$)<<") :"
+	   <<$$->child<<" : "<<$$->id<<" : stored in "<<$$->child<<std::endl;
 }
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. */
 direct_declarator "[" expression "]" {
   // only 2-dimensions to be supported
-  DataType & curType = $1;
+  $$ = $1;
   
   // dimensions cannot be specified while declaring pointers to matrices
-  if( curType == MM_MATRIX_TYPE ) {
-    
+  if( $$->type == MM_MATRIX_TYPE ) {
     // store expression value in m[0]
-    $$ = curType;
+    std::cerr << "Matrix!" << std::endl;
     
     /* TODO : Evaluate the given expression */
-    $$.rows = 3; // expression value : must be initialised
-  } else if( curType.rows != 0 ) {
+    $$->type.rows = 3; // expression value : must be initialised
+  } else if( $$->type.rows != 0 ) {
+    std::cerr << "Row!" << std::endl;
     
     // store expression value in m[4]
-    $$ = curType;
-    
     /* TODO : Evaluate the given expression */
-    $$.cols = 4;
+    $$->type.cols = 4;
+
+    // adjust the symbol table's offset
+    SymbolTable & currentTable = translator.tables[translator.currentEnvironment()];
+    currentTable.offset += $$->type.rows*$$->type.cols*SIZE_OF_DOUBLE + 2*SIZE_OF_INT;
   } else {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
   }
@@ -519,7 +571,8 @@ parameter_list "," parameter_declaration {
 
 parameter_declaration :
 type_specifier declarator {
-  
+  DataType & curType = translator.typeContext.top();
+  std::cerr << "#param of type : " << curType << std::endl;
   translator.typeContext.pop();
 }
 ;
@@ -596,25 +649,20 @@ jump_statement {
 compound_statement :
 "{" {
   /* LBrace encountered : push a new symbol table and link it to its parent */
+  
   size_t oldEnv = translator.currentEnvironment();
   size_t newEnv = translator.newEnvironment();
-
-  /* ** TODO : create a declaration context stack and change the %type of declarator to Symbol */
-  
-  // if declarationContext.top_symbol.type == funct_type and if currEnv is global
-  //   then and only then declare a new function symbol and link it to its table
-  //   also pop the declaration context of the function
-  // else create a void temporary and push it into the current
-  //   symbol table with its child as newEnv
   
   DataType voidPointer = MM_VOID_TYPE; voidPointer.pointers++;
   
   Symbol & temp = translator.genTemp( oldEnv, voidPointer );
+  // initialize it to this instruction count
+  
   temp.child = newEnv;
   
+  SymbolTable & currTable = translator.tables[newEnv];
+  currTable.parent = oldEnv;
 } optional_block_item_list "}" {
-  
-  
   
   translator.popEnvironment();
 }
@@ -718,19 +766,28 @@ function_definition {
 ;
 
 function_definition :
-type_specifier function_declarator compound_statement {
-  /* Consider funcition_definition -> type_specifier function_declarator compound_statement */
-
-  translator.typeContext.pop();
+type_specifier function_declarator {
+  // Push the same environment back onto the stack
+  // to continue declaration within the same scope
+  
+  size_t functionScope = $2->child;
+  // $2->value = address of this function
+  translator.environment.push(functionScope);
+} "{" optional_block_item_list "}" {
+  
+  translator.popEnvironment();
+  translator.typeContext.pop(); // corresponding to the type_specifier
 }
 ;
 
+%type <Symbol*> function_declarator;
 function_declarator :
 optional_pointer direct_declarator {
   /* Check if declarator has a function definition inside or not */
-  if( $2 != MM_FUNC_TYPE ) {
+  if( $2->type != MM_FUNC_TYPE ) {
     throw syntax_error( @$ , " Improper function definition : parameter list not found." );
   }
+  $$ = $2;
 }
 
 %%

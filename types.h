@@ -66,7 +66,7 @@ public:
   bool isDoubleType();
 
   /* Checks if type definition is malformed */
-  bool malformedType();
+  bool isMalformedType();
 };
 
 /* Print the type */

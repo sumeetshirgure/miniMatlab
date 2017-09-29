@@ -13,6 +13,7 @@ size_t DataType::getSize() {
   if( isPointer() )
     return SIZE_OF_PTR;
   if( rows == 0 ) {
+    if( cols == 0 ) return 2 * SIZE_OF_INT ;
     if( cols == 1 ) return 0;
     if( cols == 2 ) return SIZE_OF_BOOL;
     if( cols == 3 ) return SIZE_OF_CHAR;
@@ -52,7 +53,7 @@ bool DataType::isDoubleType() {
   return rows == 0 and cols == 5;
 }
 
-bool DataType::malformedType() {
+bool DataType::isMalformedType() {
   if( cols == 0 and rows != 0 )
     return true;
   if( rows == 0 and cols  > 6 )
@@ -63,17 +64,17 @@ bool DataType::malformedType() {
 std::ostream & operator << (std::ostream & out , const DataType & type) {
   if( type.rows == 0 ){
     switch ( type.cols ) {
-    case 0: out << "Matrix"; break;
+    case 0: out << "Mtrx"; break;
     case 1: out << "void";   break;
     case 2: out << "Bool";   break;
     case 3: out << "char";   break;
     case 4: out << "int";    break;
-    case 5: out << "double"; break;
-    case 6: out << "function"; break;
+    case 5: out << "dbl"; break;
+    case 6: out << "fnct"; break;
     default: out << " ! Unknown type "; break;
     }
   } else {
-    out << "Matrix (" << type.rows << "," << type.cols << ")";
+    out << "M (" << type.rows << "," << type.cols << ")";
   }
   for( int level = 0; level < type.pointers ; level++ )
     out << '*';

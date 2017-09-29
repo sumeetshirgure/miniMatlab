@@ -6,7 +6,8 @@ mm_translator::mm_translator() :
   trace_scan(false) , trace_parse(false) {
 
   temporaryCount = 0; // initialize tempCount to 0  
-  newEnvironment(); // initialize global table 
+  newEnvironment(); // initialize global table
+  globalTable().parent = 0;
 }
 
 /* Destructor for translator */
@@ -88,7 +89,7 @@ void mm_translator::popEnvironment() {
 Symbol & mm_translator::genTemp(size_t idx , DataType & type) {
   std::string tempId = "t#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  return tables[idx].lookup(tempId,type);
+  return tables[idx].lookup(tempId,type,true);
 }
 
 /* Print the entire symbol table */
