@@ -13,19 +13,10 @@ YY_DECL;
 /* Include 3 address code definitions */
 #include "quads.h"
 
-/* Include datatype defintions */
+/* Include datatype definitions */
 #include "types.h"
 
-/* Default datatype constants */
-const DataType MM_VOID_TYPE(0,0);
-const DataType MM_BOOL_TYPE(0,1); // implicit
-const DataType MM_CHAR_TYPE(0,2);
-const DataType MM_INT_TYPE(0,3);
-const DataType MM_DOUBLE_TYPE(0,4);
-const DataType MM_MATRIX_TYPE(0,5);
-const DataType MM_FUNC_TYPE(0,6);
-const DataType MM_MATRIX_ROW_TYPE(0,7); // implicit
-
+/* Include symbol definitions */
 #include "symbols.h"
 
 /**

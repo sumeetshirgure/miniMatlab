@@ -439,9 +439,10 @@ declarator "=" initializer {
 declarator :
 optional_pointer direct_declarator {
   $$ = $2;
-  if($2 == MM_MATRIX_ROW_TYPE) {
+  if( $2.malformedType() ) {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
-  }
+  } else std::cerr << "~ " << $2 << std::endl;
+  
   translator.typeContext.top().pointers -= $1;
 }
 ;
@@ -462,34 +463,39 @@ optional_pointer "*" {
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
-  DataType curType (translator.typeContext.top()) ;
-  std::cerr<<curType.pointers<<','<<curType.typecode<<std::endl;
+  DataType &  curType = translator.typeContext.top() ;
+  std::cerr << $1 << " : of type " << curType << std::endl;
   $$ = translator.typeContext.top();
 }
 |
 /* Function declaration */
 IDENTIFIER "(" optional_parameter_list ")" {
-  DataType curType (translator.typeContext.top()) ;
-  std::cerr << $1 << " : "
-	    << curType.pointers
-	    << "," << curType.typecode
-	    << std::endl;
+  DataType &  curType = translator.typeContext.top() ;  
+  std::cerr << $1 << " : of return type " << curType << std::endl;  
   $$ = MM_FUNC_TYPE;
 }
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. */
 direct_declarator "[" expression "]" {
   // only 2-dimensions to be supported
-  DataType curType = $1;
+  DataType & curType = $1;
+  
+  // dimensions cannot be specified while declaring pointers to matrices
   if( curType == MM_MATRIX_TYPE ) {
-    // dimensions cannot be specified while declaring pointers to matrices
+    
     // store expression value in m[0]
-    $$ = MM_MATRIX_ROW_TYPE;
-  } else if( curType == MM_MATRIX_ROW_TYPE ) {
+    $$ = curType;
+    
+    /* TODO : Evaluate the given expression */
+    $$.rows = 3; // expression value : must be initialised
+  } else if( curType.rows != 0 ) {
+    
     // store expression value in m[4]
-    $$ = MM_DOUBLE_TYPE;
+    $$ = curType;
+    
+    /* TODO : Evaluate the given expression */
+    $$.cols = 4;
   } else {
-    std::cerr<<curType.pointers<<','<<curType.typecode<<std::endl;
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
   }
 }
@@ -693,7 +699,9 @@ function_definition {
 function_definition :
 type_specifier declarator compound_statement {
   /* Check if declarator has a function definition inside or not */
-
+  if( $2 != MM_FUNC_TYPE ) {
+    throw syntax_error( @$ , " Improper function definition : parameter list not found." );
+  }
   translator.typeContext.pop();
 }
 ;
