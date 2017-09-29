@@ -53,12 +53,17 @@ class SymbolTable {
 public:
   
   size_t id;
-  
+
+  /* SymbolTable id of the parent of this table (globalTable has 0) */
   size_t parent;
   
   std::vector<Symbol> table;
-  
+
+  /* Size of all entries in this table */
   size_t offset;
+
+  /* No of parameter entries in the table (in case of functions) */
+  size_t params;
   
   /*Search a symbol by its id
     When createNew is off

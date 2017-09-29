@@ -27,7 +27,9 @@ std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
 }
 
 std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
-  out << "Table #" << symbolTable.id << " , parent = # " << symbolTable.parent << std::endl;
+  out << "Table #" << symbolTable.id
+      << " , parent = #" << symbolTable.parent
+      << " , paramCount = " << symbolTable.params << std::endl;
   for( int idx = 0; idx < symbolTable.table.size() ; idx++ ) {
     std::cout << symbolTable.table[idx] << std::endl;
   }
@@ -47,7 +49,7 @@ Symbol & SymbolTable::lookup (const std::string & id , DataType & type, bool cre
 }
 
 SymbolTable::SymbolTable(size_t _id) :
-  id(_id),offset(0) { }
+  id(_id),offset(0),params(0) { }
 
 SymbolTable::~SymbolTable() {
   table.clear();

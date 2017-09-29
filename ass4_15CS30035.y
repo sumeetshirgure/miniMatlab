@@ -491,7 +491,7 @@ IDENTIFIER {
 /* Function declaration */
 IDENTIFIER "(" {
   
-  /* Create a new environment (to store the parameters) */
+  /* Create a new environment (to store the parameters and return type) */
   size_t oldEnv = translator.currentEnvironment();
   size_t newEnv = translator.newEnvironment();
   
@@ -499,14 +499,13 @@ IDENTIFIER "(" {
   currTable.parent = oldEnv;
   
   DataType &  curType = translator.typeContext.top() ;
-  currTable.lookup("#ret" , curType , false);// push return type
+  currTable.lookup("ret#" , curType , false);// push return type
   
 } optional_parameter_list ")" {
 
   size_t currEnv = translator.currentEnvironment();
   SymbolTable & currTable = translator.tables[currEnv];
-  
-  /* TODO : Push parameter symbols */
+  currTable.params = $4;
   
   translator.popEnvironment();
   
@@ -533,12 +532,10 @@ direct_declarator "[" expression "]" {
   // dimensions cannot be specified while declaring pointers to matrices
   if( $$->type == MM_MATRIX_TYPE ) {
     // store expression value in m[0]
-    std::cerr << "Matrix!" << std::endl;
     
     /* TODO : Evaluate the given expression */
     $$->type.rows = 3; // expression value : must be initialised
   } else if( $$->type.rows != 0 ) {
-    std::cerr << "Row!" << std::endl;
     
     // store expression value in m[4]
     /* TODO : Evaluate the given expression */
@@ -553,19 +550,25 @@ direct_declarator "[" expression "]" {
 }
 ;
 
-optional_parameter_list : %empty
-| parameter_list {
-  
+%type <int> optional_parameter_list;
+optional_parameter_list :
+%empty {
+  $$ = 0;
+}
+|
+parameter_list {
+  $$ = $1;
 }
 ;
 
+%type <int> parameter_list;
 parameter_list :
 parameter_declaration {
-
+  $$ = 1;
 }
 |
 parameter_list "," parameter_declaration {
-
+  $$ = $1 + 1;
 }
 ;
 
