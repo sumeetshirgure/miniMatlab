@@ -47,7 +47,7 @@ enum OpCode {
   
   OP_REFER,     // z = &x
   OP_L_DEREF,   // *z = x
-  OP_R_VAL_AT,  // z = *x
+  OP_R_DEREF,  // z = *x
   OP_LXC,       // left indexed copy : a[b] = c
   OP_RXC,       // a = b[c]
 };
@@ -58,8 +58,10 @@ public:
   OpCode opCode;
   // z is result and x,y are 1st and 2nd operands respectively
   std::string z , x , y;
-  Taco(OpCode code,const std::string &_z="",const std::string &_x="",const std::string &_y="") :
-    opCode(code),z(_z),x(_x),y(_y){}
+  
+  Taco(const OpCode &code,const std::string&_z="",const std::string&_x="",const std::string&_y="") :
+    opCode(code),z(_z),x(_x),y(_y) { }
+  
   virtual ~Taco(){}
 };
 
