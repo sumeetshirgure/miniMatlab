@@ -14,9 +14,6 @@ union InitialValue {
   double doubleVal;
 };
 
-/* Forward definition of the symbol table */
-class SymbolTable;
-
 /* Definition of an entry in a symbol table */
 class Symbol {
 

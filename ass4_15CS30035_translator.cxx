@@ -82,6 +82,10 @@ size_t mm_translator::currentEnvironment() {
   return environment.top();
 }
 
+SymbolTable & mm_translator::currentTable() {
+  return tables[environment.top()];
+}
+
 void mm_translator::popEnvironment() {
   environment.pop();
 }

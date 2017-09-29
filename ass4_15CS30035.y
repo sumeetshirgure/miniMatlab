@@ -434,7 +434,6 @@ declarator "=" initializer {
   /* TODO : check types and optionally initalize expression */
   // also consider init_decl -> decl = asgn_expr | init_row_list
   if( $1->type == MM_INT_TYPE ) {
-    std::cerr << "~ " << $1->id << " = " << 42 << std::endl;
     $1->isInitialized = true;
     $1->value.intVal = 42;
   }
@@ -444,15 +443,10 @@ declarator "=" initializer {
 %type <Symbol*> declarator;
 declarator :
 optional_pointer direct_declarator {
-
   if( $2->type.isMalformedType() ) {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
-  } else {
-    std::cerr << "$#" << translator.currentEnvironment()
-	      << "~> " << $2->id << " , " << $2->type << std::endl;
   }
   $$ = $2;
-  
   translator.typeContext.top().pointers -= $1;
 }
 ;
@@ -473,13 +467,10 @@ optional_pointer "*" {
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
-  DataType &  curType = translator.typeContext.top() ;
-  //std::cerr << "$#" << translator.currentEnvironment()
-  //	    << " : " << $1 << " : of type " << curType << std::endl;
-  SymbolTable & table = translator.tables[translator.currentEnvironment()];
-
   try {
     // create a new symbol in current scope
+    DataType &  curType = translator.typeContext.top() ;
+    SymbolTable & table = translator.currentTable();
     Symbol & newSymbol = table.lookup( $1 , curType , true );
     $$ = & newSymbol;
   } catch ( ... ) {
@@ -490,27 +481,23 @@ IDENTIFIER {
 |
 /* Function declaration */
 IDENTIFIER "(" {
-  
   /* Create a new environment (to store the parameters and return type) */
   size_t oldEnv = translator.currentEnvironment();
   size_t newEnv = translator.newEnvironment();
-  
   SymbolTable & currTable = translator.tables[newEnv];
   currTable.parent = oldEnv;
-  
-  DataType &  curType = translator.typeContext.top() ;
+  DataType &  curType = translator.typeContext.top();
   currTable.lookup("ret#" , curType , false);// push return type
   
 } optional_parameter_list ")" {
-
+  
   size_t currEnv = translator.currentEnvironment();
   SymbolTable & currTable = translator.tables[currEnv];
   currTable.params = $4;
-  
   translator.popEnvironment();
   
   try {
-    SymbolTable & outerTable = translator.tables[translator.currentEnvironment()];
+    SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
     Symbol & newSymbol = outerTable.lookup( $1 , symbolType , true );
     newSymbol.child = currEnv;
@@ -520,8 +507,6 @@ IDENTIFIER "(" {
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
   }
   
-  std::cerr<<"$#"<<"("<<(&$$)<<") :"
-	   <<$$->child<<" : "<<$$->id<<" : stored in "<<$$->child<<std::endl;
 }
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. */
@@ -542,7 +527,7 @@ direct_declarator "[" expression "]" {
     $$->type.cols = 4;
 
     // adjust the symbol table's offset
-    SymbolTable & currentTable = translator.tables[translator.currentEnvironment()];
+    SymbolTable & currentTable = translator.currentTable();
     currentTable.offset += $$->type.rows*$$->type.cols*SIZE_OF_DOUBLE + 2*SIZE_OF_INT;
   } else {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
@@ -574,8 +559,7 @@ parameter_list "," parameter_declaration {
 
 parameter_declaration :
 type_specifier declarator {
-  DataType & curType = translator.typeContext.top();
-  std::cerr << "#param of type : " << curType << std::endl;
+  
   translator.typeContext.pop();
 }
 ;
@@ -655,14 +639,10 @@ compound_statement :
   
   size_t oldEnv = translator.currentEnvironment();
   size_t newEnv = translator.newEnvironment();
-  
   DataType voidPointer = MM_VOID_TYPE; voidPointer.pointers++;
-  
   Symbol & temp = translator.genTemp( oldEnv, voidPointer );
-  // initialize it to this instruction count
-  
+  // TODO : initialize it to this instruction count
   temp.child = newEnv;
-  
   SymbolTable & currTable = translator.tables[newEnv];
   currTable.parent = oldEnv;
 } optional_block_item_list "}" {
@@ -675,7 +655,7 @@ optional_block_item_list :
 %empty
 |
 optional_block_item_list block_item {
-  
+
 }
 ;
 
@@ -755,7 +735,7 @@ external_declarations :
 %empty
 |
 external_declarations external_declaration{
-  
+
 };
 
 external_declaration :
@@ -764,7 +744,7 @@ declaration {
 }
 |
 function_definition {
-  
+
 }
 ;
 

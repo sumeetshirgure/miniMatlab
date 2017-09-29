@@ -65,10 +65,12 @@ public:
   /* Symbol table of the current locality */
   std::vector<SymbolTable> tables;
   std::stack<int> environment;
-  
+
+  // Symbol table management
   /* Pushes a new environment and returns a pointer to it */
   size_t newEnvironment();
   size_t currentEnvironment();
+  SymbolTable & currentTable();
   void popEnvironment();
   
   /* DataType of the object/method being declared currently */

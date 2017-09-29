@@ -15,7 +15,6 @@ Symbol::~Symbol () {
 }
 
 std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
-  out << "$(" << &symbol << ") ";
   out << symbol.id << "\t\t" << symbol.type << "\t\t";
   if( !symbol.isInitialized ) out << "NULL" ;
   else if( symbol.type == MM_CHAR_TYPE ) out << (int)symbol.value.charVal ;
