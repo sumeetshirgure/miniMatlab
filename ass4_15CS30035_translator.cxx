@@ -6,7 +6,7 @@ mm_translator::mm_translator() :
   trace_scan(false) , trace_parse(false) {
 
   temporaryCount = 0; // initialize tempCount to 0  
-  newEnvironment(); // initialize global table
+  newEnvironment("globalTable"); // initialize global table
   globalTable().parent = 0;
 }
 
@@ -54,12 +54,13 @@ void mm_translator::error (const std::string &msg) {
 }
 
 void mm_translator::emit (const Taco & taco) {
+  // std::cerr << "emitted : " << taco << std::endl;
   quadArray.emplace_back( taco );
 }
 
 void mm_translator::printQuadArray () {
   for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
-    std::cout << quadArray[idx] << std::endl;
+    std::cout << idx << " " << quadArray[idx] << std::endl;
   }
 }
 
@@ -71,10 +72,10 @@ SymbolTable & mm_translator::globalTable() {
   return tables[0];
 }
 
-size_t mm_translator::newEnvironment() {
+size_t mm_translator::newEnvironment(const std::string &name="") {
   size_t idx = tables.size();
   environment.push(idx);// push the address to new symbol table
-  tables.push_back(SymbolTable(idx));
+  tables.push_back(SymbolTable(idx,name));
   return idx;
 }
 
@@ -127,8 +128,9 @@ int main( int argc , char * argv[] ){
       int result = translator.translate(cmd);
       if(result != 0) cout << cmd << " : Translation failed " << endl;
       else {
+	cout << "3 Address codes :" << endl;
 	translator.printQuadArray();
-	cout << endl;
+	cout << endl << "Symbol tables : " << endl;
 	translator.printSymbolTable();
 	cout << cmd << " : Translation completed successfully " << endl;
       }

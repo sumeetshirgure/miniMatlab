@@ -1,7 +1,7 @@
-translator_defn = ass4_15CS30035_translator.cxx quads.cc types.cc symbols.cc
+translator_defns = ass4_15CS30035_translator.cxx quads.cc types.cc symbols.cc expressions.cc
 parser_defn = ass4_15CS30035.tab.cc
 scanner_defn = lex.yy.c
-FILES = $(translator_defn) $(parser_defn) $(scanner_defn)
+FILES = $(translator_defns) $(parser_defn) $(scanner_defn)
 FLAGS = -std=c++11 -g
 
 build : scanner_files parser_files translator_files quad_files

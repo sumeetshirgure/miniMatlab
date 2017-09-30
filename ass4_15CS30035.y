@@ -248,7 +248,7 @@ additive_expression "-" multiplicative_expression {
 ;
 
 shift_expression :
-multiplicative_expression {
+additive_expression {
 
 }
 |
@@ -483,12 +483,15 @@ IDENTIFIER {
 IDENTIFIER "(" {
   /* Create a new environment (to store the parameters and return type) */
   size_t oldEnv = translator.currentEnvironment();
-  size_t newEnv = translator.newEnvironment();
-  SymbolTable & currTable = translator.tables[newEnv];
+  size_t newEnv = translator.newEnvironment($1);
+  SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
   DataType &  curType = translator.typeContext.top();
-  currTable.lookup("ret#" , curType , false);// push return type
-  
+  try {
+    currTable.lookup("ret#" , curType , true);// push return type
+  } catch ( ... ) {
+    throw syntax_error( @$ , "Internal error." );
+  }
 } optional_parameter_list ")" {
   
   size_t currEnv = translator.currentEnvironment();
@@ -516,8 +519,8 @@ direct_declarator "[" expression "]" {
   
   // dimensions cannot be specified while declaring pointers to matrices
   if( $$->type == MM_MATRIX_TYPE ) {
-    // store expression value in m[0]
     
+    // store expression value in m[0]
     /* TODO : Evaluate the given expression */
     $$->type.rows = 3; // expression value : must be initialised
   } else if( $$->type.rows != 0 ) {
@@ -565,7 +568,7 @@ type_specifier declarator {
 ;
 
 initializer :
-assignment_expression {
+expression {
   
 }
 |
@@ -636,16 +639,19 @@ jump_statement {
 compound_statement :
 "{" {
   /* LBrace encountered : push a new symbol table and link it to its parent */
-  
   size_t oldEnv = translator.currentEnvironment();
-  size_t newEnv = translator.newEnvironment();
   DataType voidPointer = MM_VOID_TYPE; voidPointer.pointers++;
+  size_t newEnv = translator.newEnvironment("");
   Symbol & temp = translator.genTemp( oldEnv, voidPointer );
+  translator.currentTable().name = temp.id;
   // TODO : initialize it to this instruction count
   temp.child = newEnv;
-  SymbolTable & currTable = translator.tables[newEnv];
+  SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
+  //std::cerr << "NewEnv :: " << temp.id << " : " << temp.child  << std::endl;
+  
 } optional_block_item_list "}" {
+  //std::cerr << "EnvPoP :: " << translator.currentEnvironment() << std::endl;
   
   translator.popEnvironment();
 }
@@ -703,7 +709,7 @@ iteration_statement :
 
 jump_statement :
 "return" optional_expression ";" {
-
+  
 }
 ;
 
@@ -749,16 +755,19 @@ function_definition {
 ;
 
 function_definition :
-type_specifier function_declarator {
+type_specifier function_declarator "{" {
   // Push the same environment back onto the stack
   // to continue declaration within the same scope
   
   size_t functionScope = $2->child;
   // $2->value = address of this function
   translator.environment.push(functionScope);
-} "{" optional_block_item_list "}" {
-  
-  translator.popEnvironment();
+  translator.emit(Taco(OP_FUNC_START,translator.currentTable().name));
+
+} optional_block_item_list "}" {
+  translator.emit(Taco(OP_FUNC_END,translator.currentTable().name));
+
+  translator.environment.pop();
   translator.typeContext.pop(); // corresponding to the type_specifier
 }
 ;

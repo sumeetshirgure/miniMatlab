@@ -19,6 +19,9 @@ YY_DECL;
 /* Include symbol definitions */
 #include "symbols.h"
 
+/* Include expression definitions */
+#include "expressions.h"
+
 /**
    Minimatlab translator class. An mm_translator object is used
    to instantiate a translation for every requested file.
@@ -68,7 +71,7 @@ public:
 
   // Symbol table management
   /* Pushes a new environment and returns a pointer to it */
-  size_t newEnvironment();
+  size_t newEnvironment(const std::string&);
   size_t currentEnvironment();
   SymbolTable & currentTable();
   void popEnvironment();

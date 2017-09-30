@@ -26,13 +26,20 @@ std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
 }
 
 std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
-  out << "Table #" << symbolTable.id
+  out << "Table " << symbolTable.name << "(" << symbolTable.id << ")"
       << " , parent = #" << symbolTable.parent
       << " , paramCount = " << symbolTable.params << std::endl;
   for( int idx = 0; idx < symbolTable.table.size() ; idx++ ) {
     std::cout << symbolTable.table[idx] << std::endl;
   }
   return out;
+}
+
+SymbolTable::SymbolTable(size_t _id,const std::string& _name="") :
+  id(_id),name(_name),offset(0),params(0) { }
+
+SymbolTable::~SymbolTable() {
+  table.clear();
 }
 
 Symbol & SymbolTable::lookup (const std::string & id , DataType & type, bool createNew) {
@@ -42,14 +49,8 @@ Symbol & SymbolTable::lookup (const std::string & id , DataType & type, bool cre
       return table[idx];
     }
   }
+  if( ! createNew ) throw 1;
   table.push_back(Symbol(id,type,offset));
   offset += type.getSize(); // 
   return table.back();
-}
-
-SymbolTable::SymbolTable(size_t _id) :
-  id(_id),offset(0),params(0) { }
-
-SymbolTable::~SymbolTable() {
-  table.clear();
 }

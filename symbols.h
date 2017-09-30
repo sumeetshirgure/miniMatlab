@@ -51,6 +51,8 @@ public:
   
   size_t id;
 
+  std::string name;
+  
   /* SymbolTable id of the parent of this table (globalTable has 0) */
   size_t parent;
   
@@ -71,7 +73,7 @@ public:
   Symbol& lookup (const std::string &, DataType &, bool createNew) ;
   
   // construct ST
-  SymbolTable(size_t);
+  SymbolTable(size_t,const std::string&);
   
   virtual ~SymbolTable() ;
 };
