@@ -96,16 +96,22 @@ Symbol & mm_translator::getSymbol(const std::pair<size_t,size_t> & ref) {
 }
 
 std::pair<size_t,size_t> mm_translator::genTemp(DataType & type) {
-  std::string tempId = "t#" + std::to_string(++temporaryCount);
+  std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
   int idx = currentEnvironment();
   return std::make_pair(idx,tables[idx].lookup(tempId,type));
 }
 
 std::pair<size_t,size_t> mm_translator::genTemp(size_t idx , DataType & type) {
-  std::string tempId = "t#" + std::to_string(++temporaryCount);
+  std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
   return std::make_pair(idx,tables[idx].lookup(tempId,type));
+}
+
+// simply check first character of id
+bool mm_translator::isTemporary(std::pair<size_t,size_t> & ref) {
+  Symbol & symbol = getSymbol(ref);
+  return symbol.id.length() > 0 and symbol.id[0] == '#';
 }
 
 void mm_translator::updateSymbolTable(size_t tableId) {
@@ -125,6 +131,25 @@ void mm_translator::printSymbolTable() {
   for( int i = 0; i < tables.size() ; i++ ) {
     std::cout << tables[i] << std::endl;
   }
+}
+
+/* Max type */
+DataType mm_translator::maxType(DataType & t1,DataType & t2) {
+  if( t1.isPointer() or t1==MM_VOID_TYPE or t1==MM_FUNC_TYPE )
+    return MM_VOID_TYPE;
+  if( t2.isPointer() or t2==MM_VOID_TYPE or t2==MM_FUNC_TYPE )
+    return MM_VOID_TYPE;
+  
+  if( t1 == MM_DOUBLE_TYPE or t2 == MM_DOUBLE_TYPE )
+    return MM_DOUBLE_TYPE;
+  if( t1 == MM_INT_TYPE or t2 == MM_INT_TYPE )
+    return MM_INT_TYPE;
+  if( t1 == MM_CHAR_TYPE or t2 == MM_CHAR_TYPE )
+    return MM_CHAR_TYPE;
+  if( t1 == MM_BOOL_TYPE or t2 == MM_BOOL_TYPE )
+    return MM_BOOL_TYPE;
+  
+  return MM_VOID_TYPE;
 }
 
 /* Main translation driver */

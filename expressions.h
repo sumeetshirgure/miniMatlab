@@ -11,8 +11,9 @@ public:
      the value of this expression.*/
   std::pair<size_t,size_t> symbol ;
 
-  /* In case this is a reference */
+  /* Flags if l-value */
   bool isReference;
+  /* Auxiliary symbol to store offsets */
   std::pair<size_t,size_t> auxSymbol;
   
   /// TODO Later

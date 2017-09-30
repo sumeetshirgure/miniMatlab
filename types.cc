@@ -58,6 +58,8 @@ bool DataType::isMalformedType() {
     return true;
   if( rows == 0 and cols  > 6 )
     return true;
+  if( rows == 0 and cols == 0 and pointers == 0 )
+    return true;
   return false;
 }
 

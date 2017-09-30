@@ -63,6 +63,9 @@ public:
   std::pair<size_t,size_t> genTemp( DataType & ) ;
   // the symbol table is provided
   std::pair<size_t,size_t> genTemp( size_t , DataType & ) ;
+
+  // returns wether given symbol is a temporary
+  bool isTemporary(std::pair<size_t,size_t> & );
   
   // Update offsets of a symbol table
   void updateSymbolTable(size_t);
@@ -87,8 +90,14 @@ public:
   
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
+
   
-  /* std::stack<Symbol> declarationContext ; */
+  /* Returns the greater of two types in basic type heirarchy 
+     To be used only for non-matrix types only.
+     If either is void or function or pointer : returns void.
+   */
+  static DataType maxType( DataType & , DataType & );
+  
 };
 
 #endif /* ! MM_TRANSLATOR_H */
