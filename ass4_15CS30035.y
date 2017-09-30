@@ -129,46 +129,56 @@ COMMA ","
 primary_expression :
 IDENTIFIER {
   int scope = translator.currentEnvironment();
+  bool found = false;
   for( ; scope != 0 ; scope = translator.tables[scope].parent ) {
     try {
-      $$.symbol = & translator.tables[scope].lookup($1);
+      $$.symbol.second = translator.tables[scope].lookup($1);
+      $$.symbol.first = scope;
+      found = true;
     } catch ( ... ) {
     }
   }
-  if($$.symbol == NULL) {
+  if(not found) {
     throw syntax_error(@$ , "Identifier :"+$1+" not declared in scope.") ;
   }
 }
 |
 INTEGER_CONSTANT {
   DataType intType = MM_INT_TYPE;
-  Symbol & temp = translator.genTemp(intType);
+  std::pair<size_t,size_t> ref = translator.genTemp(intType);
+  Symbol & temp = translator.getSymbol(ref);
   temp.value.intVal = $1;
   temp.isInitialized = true;
-  $$.symbol = &temp;
+  $$.symbol = ref;
+  translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 }
 |
 FLOATING_CONSTANT {
   DataType doubleType = MM_DOUBLE_TYPE;
-  Symbol & temp = translator.genTemp(doubleType);
+  std::pair<size_t,size_t> ref = translator.genTemp(doubleType);
+  Symbol & temp = translator.getSymbol(ref);
   temp.value.doubleVal = $1;
   temp.isInitialized = true;
-  $$.symbol = &temp;
+  $$.symbol = ref;
+  translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 }
 |
 CHARACTER_CONSTANT {
   DataType charType = MM_CHAR_TYPE;
-  Symbol & temp = translator.genTemp(charType);
+  std::pair<size_t,size_t> ref = translator.genTemp(charType);
+  Symbol & temp = translator.getSymbol(ref);
   temp.value.charVal = $1;
   temp.isInitialized = true;
-  $$.symbol = &temp;
+  $$.symbol = ref;
+  translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));  
 }
 |
 STRING_LITERAL {
   DataType charPointerType = MM_CHAR_TYPE;
   charPointerType.pointers++;
-  Symbol & temp = translator.genTemp(charPointerType);
-  $$.symbol = &temp;
+  std::pair<size_t,size_t> ref = translator.genTemp(charPointerType);
+  Symbol & temp = translator.getSymbol(ref);
+  $$.symbol = ref;
 }
 |
 "(" expression ")" {
@@ -185,25 +195,85 @@ primary_expression {
 /* Dereference matrix element. Empty expression not allowed. */
 postfix_expression "[" expression "]" {
   
-  
-  
 }
 |
 /* Function call */
 postfix_expression "(" optional_argument_list ")" {
-
+  
 }
 |
 postfix_expression "++" {
-
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  std::swap($$,$1); // copy everything
+  
+  if( lSym.type.isPointer() ) {
+    /* TODO : support pointer arithmetic */
+    throw syntax_error( @$ , "Pointer arithmetic not supported yet.");
+  } else {
+    DataType & type = lSym.type;
+    if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE) {
+      std::pair<size_t,size_t> tempRef = translator.genTemp(type);
+      Symbol & temp = translator.getSymbol(tempRef);
+      
+      if( $$.isReference ) {// first dereference then assign
+	Symbol & auxSym = translator.getSymbol($1.auxSymbol);
+	translator.emit(Taco(OP_RXC,temp.id,lSym.id,auxSym.id));// tmp = base[idx];
+	std::pair<size_t,size_t> tempRef2 = translator.genTemp(type);
+	Symbol & temp2 = translator.getSymbol(tempRef2);
+	translator.emit(Taco(OP_PLUS,temp2.id,temp.id,"1"));// t2 = t + 1;
+	translator.emit(Taco(OP_LXC,lSym.id,auxSym.id,temp2.id));// base[idx] = t2;
+	$$.isReference = false;
+      } else {
+	translator.emit(Taco(OP_COPY,temp.id,lSym.id));
+	translator.emit(Taco(OP_PLUS,lSym.id,lSym.id,"1"));
+      }
+      
+      $$.symbol = tempRef;
+      // this expression now refers to the value before incrementation
+    } else {
+      throw syntax_error( @$ , "Invalid type for postfix increment operator.");
+    }
+  }
+  
 }
 |
 postfix_expression "--" {
-
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  std::swap($$,$1); // copy everything
+  
+  if( lSym.type.isPointer() ) {
+    /* TODO : support pointer arithmetic */
+    throw syntax_error( @$ , "Pointer arithmetic not supported yet.");
+  } else {
+    DataType & type = lSym.type;
+    if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE) {
+      std::pair<size_t,size_t> tempRef = translator.genTemp(type);
+      Symbol & temp = translator.getSymbol(tempRef);
+      
+      if( $$.isReference ) {// first dereference then assign
+	Symbol & auxSym = translator.getSymbol($1.auxSymbol);
+	translator.emit(Taco(OP_RXC,temp.id,lSym.id,auxSym.id));// tmp = base[idx];
+	std::pair<size_t,size_t> tempRef2 = translator.genTemp(type);
+	Symbol & temp2 = translator.getSymbol(tempRef2);
+	translator.emit(Taco(OP_MINUS,temp2.id,temp.id,"1"));// t2 = t - 1;
+	translator.emit(Taco(OP_LXC,lSym.id,auxSym.id,temp2.id));// base[idx] = t2;
+	$$.isReference = false;
+      } else {
+	translator.emit(Taco(OP_COPY,temp.id,lSym.id));
+	translator.emit(Taco(OP_MINUS,lSym.id,lSym.id,"1"));
+      }
+      $$.symbol = tempRef;
+      // this expression now refers to the value before decrementation
+    } else {
+      throw syntax_error( @$ , "Invalid type for postfix decrement operator.");
+    }
+  }
+  
 }
 |
 postfix_expression ".'" {
-
+  /* TODO : Support matrix transposition */
+  throw syntax_error(@$, "Matrix transpose not supported yet.");
 }
 ;
 
@@ -468,29 +538,29 @@ declarator {
 declarator "=" initializer {
   /* TODO : check types and optionally initalize expression */
   // also consider init_decl -> decl = asgn_expr | init_row_list
-  if( $1->type == MM_INT_TYPE ) {
-    $1->isInitialized = true;
-    $1->value.intVal = 42;
-  }
+  
 }
 ;
 
-%type <Symbol*> declarator;
+%type < std::pair<size_t,size_t> > declarator;
 declarator :
 optional_pointer direct_declarator {
-  if( $2->type.isMalformedType() ) {
+  $$ = $2;
+  Symbol & symbol = translator.getSymbol($$);
+  
+  if( symbol.type.isMalformedType() ) {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
   }
-  $$ = $2;
-  std::cerr << "! " << $$->id << " : " << $$->type << std::endl;
-  translator.printSymbolTable();
   
-  // TODO : update the symbol table
+  //std::cerr << "! " << symbol.id << " : " << symbol.type << std::endl;
+  translator.updateSymbolTable($2.first);
+  //translator.printSymbolTable();
+  
   translator.typeContext.top().pointers -= $1;
 }
 ;
 
-%type <int> optional_pointer;
+%type < size_t > optional_pointer;
 optional_pointer :
 %empty {
   $$ = 0;
@@ -502,7 +572,7 @@ optional_pointer "*" {
 }
 ;
 
-%type <Symbol*> direct_declarator;
+%type < std::pair<size_t,size_t> > direct_declarator;
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
@@ -510,8 +580,8 @@ IDENTIFIER {
     // create a new symbol in current scope
     DataType &  curType = translator.typeContext.top() ;
     SymbolTable & table = translator.currentTable();
-    Symbol & newSymbol = table.lookup( $1 , curType );
-    $$ = & newSymbol;
+    $$ = std::make_pair(translator.currentEnvironment(),
+			table.lookup( $1 , curType ));
   } catch ( ... ) {
     /* Already declared in current scope */
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
@@ -532,47 +602,44 @@ IDENTIFIER "(" {
     throw syntax_error( @$ , "Internal error." );
   }
 } optional_parameter_list ")" {
-  
+
   size_t currEnv = translator.currentEnvironment();
-  SymbolTable & currTable = translator.tables[currEnv];
+  SymbolTable & currTable = translator.currentTable();
   currTable.params = $4;
   translator.popEnvironment();
   
   try {
     SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
-    Symbol & newSymbol = outerTable.lookup( $1 , symbolType );
+    $$ = std::make_pair(translator.currentEnvironment()
+			,outerTable.lookup( $1 , symbolType ));
+    Symbol & newSymbol = translator.getSymbol($$);
     newSymbol.child = currEnv;
-    $$ = & newSymbol;
   } catch ( ... ) {
     /* Already declared in current scope */
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
   }
-  
 }
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. */
 direct_declarator "[" expression "]" {
   // only 2-dimensions to be supported
   $$ = $1;
-  
+
+  Symbol & curSymbol = translator.getSymbol($$);
   // dimensions cannot be specified while declaring pointers to matrices
-  if( $$->type == MM_MATRIX_TYPE ) {
+  if( curSymbol.type == MM_MATRIX_TYPE ) {
     
     // store expression value in m[0]
     /* TODO : Evaluate the given expression */
-    $$->type.rows = 3; // expression value : must be initialised
-    std::cerr << "$$" << $$->type.rows << std::endl;
-  } else if( $$->type.rows != 0 ) {
+    curSymbol.type.rows = 3; // expression value : must be initialised
+    
+  } else if( curSymbol.type.rows != 0 ) {
     
     // store expression value in m[4]
     /* TODO : Evaluate the given expression */
-    $$->type.cols = 4;
-    std::cerr << "$$" << $$->type.rows << "," << $$->type.cols << std::endl;
+    curSymbol.type.cols = 4;
     
-    // adjust the symbol table's offset
-    SymbolTable & currentTable = translator.currentTable();
-    currentTable.offset += $$->type.rows*$$->type.cols*SIZE_OF_DOUBLE + 2*SIZE_OF_INT;
   } else {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
   }
@@ -684,7 +751,8 @@ compound_statement :
   DataType voidPointer = MM_VOID_TYPE;
   voidPointer.pointers++;
   size_t newEnv = translator.newEnvironment("");
-  Symbol & temp = translator.genTemp( oldEnv, voidPointer );
+  std::pair<size_t,size_t> ref = translator.genTemp( oldEnv, voidPointer );
+  Symbol & temp = translator.getSymbol(ref);
   translator.currentTable().name = temp.id;
   // TODO : initialize it to this instruction count
   temp.child = newEnv;
@@ -800,8 +868,9 @@ function_definition :
 type_specifier function_declarator "{" {
   // Push the same environment back onto the stack
   // to continue declaration within the same scope
-  
-  size_t functionScope = $2->child;
+
+  Symbol & symbol = translator.getSymbol($2);
+  size_t functionScope = symbol.child;
   // $2->value = address of this function
   translator.environment.push(functionScope);
   translator.emit(Taco(OP_FUNC_START,translator.currentTable().name));
@@ -814,14 +883,15 @@ type_specifier function_declarator "{" {
 }
 ;
 
-%type <Symbol*> function_declarator;
+%type < std::pair<size_t,size_t> > function_declarator;
 function_declarator :
 optional_pointer direct_declarator {
   /* Check if declarator has a function definition inside or not */
-  if( $2->type != MM_FUNC_TYPE ) {
+  $$ = $2;
+  Symbol & symbol = translator.getSymbol($$);
+  if( symbol.type != MM_FUNC_TYPE ) {
     throw syntax_error( @$ , " Improper function definition : parameter list not found." );
   }
-  $$ = $2;
 }
 
 %%

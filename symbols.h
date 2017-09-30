@@ -66,15 +66,15 @@ public:
 
   /* Search a symbol by its id
      If it does not exist , throws error.
-     Else returns a reference to that symbol.
+     Else returns index of that symbol in the table.
    */
-  Symbol& lookup (const std::string &) ;
+  size_t lookup (const std::string &) ;
   
   /*Create a symbol by its id and datatype
     Throws error if it exists in table.
-    If not , returns a dummy symbol which must be initialized by the caller.
+    If not , returns index of a dummy symbol which must be initialized by the caller.
   */
-  Symbol& lookup (const std::string &, DataType &) ;
+  size_t lookup (const std::string &, DataType &) ;
   
   // construct ST
   SymbolTable(size_t,const std::string&);

@@ -54,12 +54,19 @@ public:
 
   // Temporary symbol generation
   int temporaryCount ;
+
+  // get symbol by {tableIndex , entryIndex}
+  Symbol & getSymbol(const std::pair<size_t,size_t> & ref);
+  
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference
-  Symbol & genTemp( DataType & ) ;
+  std::pair<size_t,size_t> genTemp( DataType & ) ;
   // the symbol table is provided
-  Symbol & genTemp( size_t , DataType & ) ;
-
+  std::pair<size_t,size_t> genTemp( size_t , DataType & ) ;
+  
+  // Update offsets of a symbol table
+  void updateSymbolTable(size_t);
+  
   // Print all tables
   void printSymbolTable();
   

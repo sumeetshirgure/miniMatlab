@@ -9,8 +9,13 @@ public:
 
   /* Symbol corresponding to ( temporary ) variable holding
      the value of this expression.*/
-  Symbol * symbol ;
+  std::pair<size_t,size_t> symbol ;
+
+  /* In case this is a reference */
+  bool isReference;
+  std::pair<size_t,size_t> auxSymbol;
   
+  /// TODO Later
   std::list<int> trueList , falseList;
   
   Expression();

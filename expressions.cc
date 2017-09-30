@@ -1,8 +1,8 @@
 #include "expressions.h"
 
 
-Expression::Expression():
-  symbol(NULL) { }
+Expression::Expression() :
+  isReference(false) { }
 
 Expression::~Expression() {
   trueList.clear();

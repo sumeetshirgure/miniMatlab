@@ -42,16 +42,16 @@ SymbolTable::~SymbolTable() {
   table.clear();
 }
 
-Symbol & SymbolTable::lookup (const std::string & id) {
+size_t SymbolTable::lookup (const std::string & id) {
   for( int idx = 0 ; idx < table.size() ; idx++ ) {
     if( table[idx].id == id ) {
-      return table[idx];
+      return idx;
     }
   }
   throw 1;
 }
 
-Symbol & SymbolTable::lookup (const std::string & id , DataType & type) {
+size_t SymbolTable::lookup (const std::string & id , DataType & type) {
   for( int idx = 0 ; idx < table.size() ; idx++ ) {
     if( table[idx].id == id ) {
       throw 1;
@@ -59,5 +59,5 @@ Symbol & SymbolTable::lookup (const std::string & id , DataType & type) {
   }
   table.push_back(Symbol(id,type,offset));
   offset += type.getSize(); // 
-  return table.back();
+  return table.size()-1;
 }

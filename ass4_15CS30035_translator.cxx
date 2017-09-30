@@ -91,17 +91,33 @@ void mm_translator::popEnvironment() {
   environment.pop();
 }
 
-Symbol & mm_translator::genTemp(DataType & type) {
+Symbol & mm_translator::getSymbol(const std::pair<size_t,size_t> & ref) {
+  return tables[ref.first].table[ref.second];
+}
+
+std::pair<size_t,size_t> mm_translator::genTemp(DataType & type) {
   std::string tempId = "t#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
   int idx = currentEnvironment();
-  return tables[idx].lookup(tempId,type);
+  return std::make_pair(idx,tables[idx].lookup(tempId,type));
 }
 
-Symbol & mm_translator::genTemp(size_t idx , DataType & type) {
+std::pair<size_t,size_t> mm_translator::genTemp(size_t idx , DataType & type) {
   std::string tempId = "t#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  return tables[idx].lookup(tempId,type);
+  return std::make_pair(idx,tables[idx].lookup(tempId,type));
+}
+
+void mm_translator::updateSymbolTable(size_t tableId) {
+  SymbolTable & symbolTable = tables[tableId];
+  for(int idx = 0; idx<symbolTable.table.size(); idx++) {
+    if( idx + 1 < symbolTable.table.size() ) {
+      Symbol & curSymbol = symbolTable.table[idx];
+      Symbol & nextSymbol = symbolTable.table[idx+1];
+      nextSymbol.offset = curSymbol.offset + curSymbol.type.getSize();
+      symbolTable.offset = nextSymbol.offset + nextSymbol.type.getSize();
+    }
+  }
 }
 
 /* Print the entire symbol table */
