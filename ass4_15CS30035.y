@@ -138,6 +138,12 @@ IDENTIFIER {
     } catch ( ... ) {
     }
   }
+  try {
+    $$.symbol.second = translator.tables[0].lookup($1);
+    $$.symbol.first = scope;
+    found = true;
+  } catch ( ... ) {
+  }
   if(not found) {
     throw syntax_error(@$ , "Identifier :"+$1+" not declared in scope.") ;
   }
@@ -194,12 +200,64 @@ primary_expression {
 |
 /* Dereference matrix element. Empty expression not allowed. */
 postfix_expression "[" expression "]" {
-  
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  std::swap($$,$1);
+  if( lSym.type.isPointer() ) {
+    throw syntax_error(@$ , "Cannot subscript pointers.");
+  }else if( lSym.type.rows == 0 ) {// non-matrix type
+    throw syntax_error(@$ , "Cannot subscript non-matrix values.");
+  } else if( lSym.type.rows != 0 and lSym.type.cols != 0 ) {// row indexing
+
+    Symbol & indexSymbol = translator.getSymbol($3.symbol);
+    
+    if( indexSymbol.type != MM_INT_TYPE ) {
+      throw syntax_error(@$ , "Non-integral index for matrix " + lSym.id + "." );
+    }
+
+    /* TODO : Row Index matrices */
+    
+  } else if( lSym.type.rows != 0 and lSym.type.cols == 0 ) {// column index
+    
+    Symbol & indexSymbol = translator.getSymbol($3.symbol);
+    if( indexSymbol.type != MM_INT_TYPE ) {
+      throw syntax_error(@$ , "Non-integral index for matrix " + lSym.id + "." );
+    }    
+    
+    /* TODO : Column Index matrices */
+    
+  } else {
+    throw syntax_error(@$ , ">2D matrices not supported.");
+  }
 }
 |
 /* Function call */
 postfix_expression "(" optional_argument_list ")" {
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  std::swap($$,$1);
   
+  if( lSym.type != MM_FUNC_TYPE or lSym.child == 0 ) {
+    throw syntax_error( @$ , lSym.id + " is not a defined function." );
+  } else {
+    bool paramCheck = true;
+    std::vector<Expression> & paramList = $3;
+    SymbolTable & symTable = translator.tables[lSym.child];
+    if( paramList.size() != symTable.params ) {
+      paramCheck = false;
+    } else {
+      for(int idx = 0;idx < paramList.size(); idx++ ) {
+	Symbol & parameter = translator.getSymbol(paramList[idx].symbol);
+	if( symTable.table[idx+1].type != parameter.type ) {
+	  paramCheck = false;
+	  break;
+	}
+	translator.emit(Taco(OP_PARAM,parameter.id));
+      }
+    }
+    if( not paramCheck ) {
+      throw syntax_error(@$, lSym.id + " is not called with proper parameters." );
+    }
+  }
+
 }
 |
 postfix_expression "++" {
@@ -277,51 +335,162 @@ postfix_expression ".'" {
 }
 ;
 
-optional_argument_list : %empty
-| argument_list {
-  
-}
-;
-
-argument_list :
-assignment_expression {
-  
+%type < std::vector<Expression> > optional_argument_list;
+optional_argument_list :
+%empty {
 }
 |
-argument_list "," assignment_expression {
-
+argument_list {
+  std::swap($$,$1);
 }
 ;
 
+%type < std::vector<Expression> > argument_list;
+argument_list :
+expression {
+  $$.push_back($1);
+}
+|
+argument_list "," expression {
+  swap($$,$1);
+  $$.push_back($3);
+}
+;
+
+%type <Expression> unary_expression;
 unary_expression :
 postfix_expression {
-
+  std::swap($$,$1);
 }
 |
 "++" unary_expression {
-
+  Symbol & rSym = translator.getSymbol($2.symbol);
+  std::swap($$,$2); // copy everything
+  
+  if( rSym.type.isPointer() ) {
+    /* TODO : support pointer arithmetic */
+    throw syntax_error( @$ , "Pointer arithmetic not supported yet.");
+  } else {
+    DataType & type = rSym.type;
+    if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE) {
+      std::pair<size_t,size_t> tempRef = translator.genTemp(type);
+      Symbol & temp = translator.getSymbol(tempRef);
+      
+      if( $$.isReference ) {// first dereference then copy back
+	Symbol & auxSym = translator.getSymbol($2.auxSymbol);
+	translator.emit(Taco(OP_RXC,temp.id,rSym.id,auxSym.id));// tmp = base[idx];
+	translator.emit(Taco(OP_PLUS,temp.id,temp.id,"1"));// t = t + 1
+	translator.emit(Taco(OP_LXC,rSym.id,auxSym.id,temp.id));// base[idx] = t
+	$$.isReference = false;
+      } else {
+	translator.emit(Taco(OP_PLUS,temp.id,rSym.id,"1"));
+	translator.emit(Taco(OP_COPY,rSym.id,temp.id));
+      }
+      $$.symbol = tempRef;
+      // this expression now refers to the value after incrementation
+    } else {
+      throw syntax_error( @$ , "Invalid type for prefix increment operator.");
+    }
+  }
+  
 }
 |
 "--" unary_expression {
+  Symbol & rSym = translator.getSymbol($2.symbol);
+  std::swap($$,$2); // copy everything
+  
+  if( rSym.type.isPointer() ) {
+    /* TODO : support pointer arithmetic */
+    throw syntax_error( @$ , "Pointer arithmetic not supported yet.");
+  } else {
+    DataType & type = rSym.type;
+    if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE) {
+      std::pair<size_t,size_t> tempRef = translator.genTemp(type);
+      Symbol & temp = translator.getSymbol(tempRef);
+      
+      if( $$.isReference ) {// first dereference then copy back
+	Symbol & auxSym = translator.getSymbol($2.auxSymbol);
+	translator.emit(Taco(OP_RXC,temp.id,rSym.id,auxSym.id));// tmp = base[idx];
+	translator.emit(Taco(OP_MINUS,temp.id,temp.id,"1"));// t = t - 1
+	translator.emit(Taco(OP_LXC,rSym.id,auxSym.id,temp.id));// base[idx] = t
+	$$.isReference = false;
+      } else {
+	translator.emit(Taco(OP_MINUS,temp.id,rSym.id,"1"));
+	translator.emit(Taco(OP_COPY,rSym.id,temp.id));
+      }
+      $$.symbol = tempRef;
+      // this expression now refers to the value after decrementation
+    } else {
+      throw syntax_error( @$ , "Invalid type for prefix decrement operator.");
+    }
+  }
 
 }
 |
 unary_operator postfix_expression {
+  /* TODO : complete this */
+  Symbol & rSym = translator.getSymbol($2.symbol);
+  std::swap($$,$2);// copy all
+  
+  switch($1) {
+  case '&' : {
+    std::pair<size_t,size_t> tempRef = translator.genTemp(rSym.type);
+    Symbol & temp = translator.getSymbol(tempRef);
+    temp.type.pointers++;// take address
+    translator.emit(Taco(OP_REFER,temp.id,rSym.id));
+    $$.symbol = tempRef;
+  } break;
+  case '*' : {
+    if( not rSym.type.isPointer() ) {
+      throw syntax_error(@$, "Cannot dereference non-pointer type : " + rSym.id);
+    }
+    std::pair<size_t,size_t> tempRef = translator.genTemp(rSym.type);
+    Symbol & temp = translator.getSymbol(tempRef);
+    temp.type.pointers--;// dereference
+    translator.emit(Taco(OP_R_DEREF,temp.id,rSym.id));
+    $$.symbol = tempRef;
+  } break;
+  case '+' : {
+    // noop
+  } break;
+  case '-' : {
+    std::pair<size_t,size_t> tempRef = translator.genTemp(rSym.type);
+    Symbol & temp = translator.getSymbol(tempRef);
+    
+    if( rSym.type == MM_CHAR_TYPE or rSym.type == MM_INT_TYPE or rSym.type == MM_DOUBLE_TYPE ) {
+      translator.emit(Taco(OP_UMINUS,temp.id,rSym.id));
+    } else {
+      if( rSym.type.rows != 0 and rSym.type.cols != 0 ) {// negate entire matrix
+	/* TODO : Emit tacos to negate matrix */
+	// for( int i=0 to rows*cols-1 ) temp2 = rSym[i] , temp[i] = temp2
+	// temp = return type of expression = the same matrix
+      } else {
+	throw syntax_error(@$, "Invalid type " + rSym.id + " for unary negation.");
+      }
+    }
+    
+    $$.symbol = tempRef;
+  } break;
+  default: throw syntax_error(@$ , "Wrong unary operator.");
+  }
 
 }
 ;
 
+%type <char> unary_operator;
 unary_operator :
-"&" { /* get reference */ }
-|"*" { /* dereference */ }
-|"+" { /* unary plus */ }
-|"-" { /* unary minus */  }
+ "&" { $$ = '&'; }
+|"*" { $$ = '*'; }
+|"+" { $$ = '+'; }
+|"-" { $$ = '-'; }
 
+// %type <Expression> multiplicative_expression;
 cast_expression : unary_expression { }
 
+// %type <Expression> multiplicative_expression;
 multiplicative_expression :
 cast_expression {
-
+  
 }
 |
 multiplicative_expression "*" cast_expression {
@@ -463,18 +632,22 @@ logical_OR_expression "?" expression ":" conditional_expression {
 
 assignment_expression :
 conditional_expression {
-
+  
 }
 |
 unary_expression "=" assignment_expression {
-
+  
 }
 ;
 
 %type <Expression> expression;
 expression :
 assignment_expression {
-  
+  /*
+  DataType type = MM_INT_TYPE;
+  $$.symbol = translator.genTemp(type);
+  $$.isReference = false;
+  */
 }
 ;
 
@@ -634,7 +807,7 @@ direct_declarator "[" expression "]" {
     /* TODO : Evaluate the given expression */
     curSymbol.type.rows = 3; // expression value : must be initialised
     
-  } else if( curSymbol.type.rows != 0 ) {
+  } else if( curSymbol.type.rows != 0 and curSymbol.type.cols == 0 ) {
     
     // store expression value in m[4]
     /* TODO : Evaluate the given expression */
