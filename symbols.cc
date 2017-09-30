@@ -42,14 +42,21 @@ SymbolTable::~SymbolTable() {
   table.clear();
 }
 
-Symbol & SymbolTable::lookup (const std::string & id , DataType & type, bool createNew) {
+Symbol & SymbolTable::lookup (const std::string & id) {
   for( int idx = 0 ; idx < table.size() ; idx++ ) {
     if( table[idx].id == id ) {
-      if( createNew ) throw 1;
       return table[idx];
     }
   }
-  if( ! createNew ) throw 1;
+  throw 1;
+}
+
+Symbol & SymbolTable::lookup (const std::string & id , DataType & type) {
+  for( int idx = 0 ; idx < table.size() ; idx++ ) {
+    if( table[idx].id == id ) {
+      throw 1;
+    }
+  }
   table.push_back(Symbol(id,type,offset));
   offset += type.getSize(); // 
   return table.back();

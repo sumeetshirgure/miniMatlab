@@ -15,6 +15,7 @@
 #include <string>
 #include "types.h"
 #include "symbols.h"
+#include "expressions.h"
   class mm_translator;
  }
 
@@ -99,7 +100,8 @@ SEMICOLON ";"
 COMMA ","
 ;
 
-%token <std::string> IDENTIFIER STRING_LITERAL CHARACTER_CONSTANT ;
+%token <std::string> IDENTIFIER STRING_LITERAL ;
+%token <char> CHARACTER_CONSTANT ;
 
 /* Only 32-bit signed integer is supported for now */
 %token <int> INTEGER_CONSTANT ;
@@ -123,35 +125,67 @@ COMMA ","
 /*********************EXPRESSION NON-TERMINALS*************************/
 /**********************************************************************/
 
+%type <Expression> primary_expression;
 primary_expression :
 IDENTIFIER {
-  
+  int scope = translator.currentEnvironment();
+  for( ; scope != 0 ; scope = translator.tables[scope].parent ) {
+    try {
+      $$.symbol = & translator.tables[scope].lookup($1);
+    } catch ( ... ) {
+    }
+  }
+  if($$.symbol == NULL) {
+    throw syntax_error(@$ , "Identifier :"+$1+" not declared in scope.") ;
+  }
 }
 |
 INTEGER_CONSTANT {
-  
+  DataType intType = MM_INT_TYPE;
+  Symbol & temp = translator.genTemp(intType);
+  temp.value.intVal = $1;
+  temp.isInitialized = true;
+  $$.symbol = &temp;
 }
 |
 FLOATING_CONSTANT {
-  
+  DataType doubleType = MM_DOUBLE_TYPE;
+  Symbol & temp = translator.genTemp(doubleType);
+  temp.value.doubleVal = $1;
+  temp.isInitialized = true;
+  $$.symbol = &temp;
+}
+|
+CHARACTER_CONSTANT {
+  DataType charType = MM_CHAR_TYPE;
+  Symbol & temp = translator.genTemp(charType);
+  temp.value.charVal = $1;
+  temp.isInitialized = true;
+  $$.symbol = &temp;
 }
 |
 STRING_LITERAL {
-  
+  DataType charPointerType = MM_CHAR_TYPE;
+  charPointerType.pointers++;
+  Symbol & temp = translator.genTemp(charPointerType);
+  $$.symbol = &temp;
 }
 |
 "(" expression ")" {
-
+  std::swap($$,$2);
 }
 ;
 
+%type <Expression> postfix_expression;
 postfix_expression:
 primary_expression {
-  
+  std::swap($$,$1);
 }
 |
 /* Dereference matrix element. Empty expression not allowed. */
 postfix_expression "[" expression "]" {
+  
+  
   
 }
 |
@@ -367,9 +401,10 @@ unary_expression "=" assignment_expression {
 }
 ;
 
+%type <Expression> expression;
 expression :
 assignment_expression {
-
+  
 }
 ;
 
@@ -447,6 +482,10 @@ optional_pointer direct_declarator {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
   }
   $$ = $2;
+  std::cerr << "! " << $$->id << " : " << $$->type << std::endl;
+  translator.printSymbolTable();
+  
+  // TODO : update the symbol table
   translator.typeContext.top().pointers -= $1;
 }
 ;
@@ -471,7 +510,7 @@ IDENTIFIER {
     // create a new symbol in current scope
     DataType &  curType = translator.typeContext.top() ;
     SymbolTable & table = translator.currentTable();
-    Symbol & newSymbol = table.lookup( $1 , curType , true );
+    Symbol & newSymbol = table.lookup( $1 , curType );
     $$ = & newSymbol;
   } catch ( ... ) {
     /* Already declared in current scope */
@@ -488,7 +527,7 @@ IDENTIFIER "(" {
   currTable.parent = oldEnv;
   DataType &  curType = translator.typeContext.top();
   try {
-    currTable.lookup("ret#" , curType , true);// push return type
+    currTable.lookup("ret#" , curType );// push return type
   } catch ( ... ) {
     throw syntax_error( @$ , "Internal error." );
   }
@@ -502,7 +541,7 @@ IDENTIFIER "(" {
   try {
     SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
-    Symbol & newSymbol = outerTable.lookup( $1 , symbolType , true );
+    Symbol & newSymbol = outerTable.lookup( $1 , symbolType );
     newSymbol.child = currEnv;
     $$ = & newSymbol;
   } catch ( ... ) {
@@ -523,12 +562,14 @@ direct_declarator "[" expression "]" {
     // store expression value in m[0]
     /* TODO : Evaluate the given expression */
     $$->type.rows = 3; // expression value : must be initialised
+    std::cerr << "$$" << $$->type.rows << std::endl;
   } else if( $$->type.rows != 0 ) {
     
     // store expression value in m[4]
     /* TODO : Evaluate the given expression */
     $$->type.cols = 4;
-
+    std::cerr << "$$" << $$->type.rows << "," << $$->type.cols << std::endl;
+    
     // adjust the symbol table's offset
     SymbolTable & currentTable = translator.currentTable();
     currentTable.offset += $$->type.rows*$$->type.cols*SIZE_OF_DOUBLE + 2*SIZE_OF_INT;
@@ -640,7 +681,8 @@ compound_statement :
 "{" {
   /* LBrace encountered : push a new symbol table and link it to its parent */
   size_t oldEnv = translator.currentEnvironment();
-  DataType voidPointer = MM_VOID_TYPE; voidPointer.pointers++;
+  DataType voidPointer = MM_VOID_TYPE;
+  voidPointer.pointers++;
   size_t newEnv = translator.newEnvironment("");
   Symbol & temp = translator.genTemp( oldEnv, voidPointer );
   translator.currentTable().name = temp.id;

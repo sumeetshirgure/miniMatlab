@@ -91,10 +91,17 @@ void mm_translator::popEnvironment() {
   environment.pop();
 }
 
+Symbol & mm_translator::genTemp(DataType & type) {
+  std::string tempId = "t#" + std::to_string(++temporaryCount);
+  /* # so it won't collide with any existing non-temporary entries */
+  int idx = currentEnvironment();
+  return tables[idx].lookup(tempId,type);
+}
+
 Symbol & mm_translator::genTemp(size_t idx , DataType & type) {
   std::string tempId = "t#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  return tables[idx].lookup(tempId,type,true);
+  return tables[idx].lookup(tempId,type);
 }
 
 /* Print the entire symbol table */

@@ -63,14 +63,18 @@ public:
 
   /* No of parameter entries in the table (in case of functions) */
   size_t params;
+
+  /* Search a symbol by its id
+     If it does not exist , throws error.
+     Else returns a reference to that symbol.
+   */
+  Symbol& lookup (const std::string &) ;
   
-  /*Search a symbol by its id
-    When createNew is off
-      Returns the symbol reference if it exists in table.
-      If not , returns a dummy symbol which must be initialized by the caller.
-    If createNew is on , throws an integer if id already exists, otherwise the same.
+  /*Create a symbol by its id and datatype
+    Throws error if it exists in table.
+    If not , returns a dummy symbol which must be initialized by the caller.
   */
-  Symbol& lookup (const std::string &, DataType &, bool createNew) ;
+  Symbol& lookup (const std::string &, DataType &) ;
   
   // construct ST
   SymbolTable(size_t,const std::string&);

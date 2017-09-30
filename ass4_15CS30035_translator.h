@@ -56,6 +56,8 @@ public:
   int temporaryCount ;
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference
+  Symbol & genTemp( DataType & ) ;
+  // the symbol table is provided
   Symbol & genTemp( size_t , DataType & ) ;
 
   // Print all tables
