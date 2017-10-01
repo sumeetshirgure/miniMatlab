@@ -17,20 +17,20 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_BIT_NOT:return out<<taco.z<<" = ~ "<<taco.x;
   case OP_COPY:return out<<taco.z<<" = "<<taco.x;
 
-  case OP_IF_VAL:return out<<" if "<<taco.x<<" goto "<<taco.z;
-  case OP_IF_NOT:return out<<" ifNot "<<taco.x<<" goto "<<taco.z;
+  case OP_IF_VAL:return out<<"if "<<taco.x<<" goto "<<taco.z;
+  case OP_IF_NOT:return out<<"ifNot "<<taco.x<<" goto "<<taco.z;
 
-  case OP_LT:return out<<" if "<<taco.x<<"<"<<taco.y<<" goto "<<taco.z;
-  case OP_LTE:return out<<" if "<<taco.x<<"<="<<taco.y<<" goto "<<taco.z;
-  case OP_GT:return out<<" if "<<taco.x<<">"<<taco.y<<" goto "<<taco.z;
-  case OP_GTE:return out<<" if "<<taco.x<<">="<<taco.y<<" goto "<<taco.z;
-  case OP_EQ:return out<<" if "<<taco.x<<"=="<<taco.y<<" goto "<<taco.z;
-  case OP_NEQ:return out<<" if "<<taco.x<<"!="<<taco.y<<" goto "<<taco.z;
-  case OP_GOTO:return out<<" goto "<<taco.z;
+  case OP_LT:return out<<"if "<<taco.x<<" < "<<taco.y<<" goto "<<taco.z;
+  case OP_LTE:return out<<"if "<<taco.x<<" <= "<<taco.y<<" goto "<<taco.z;
+  case OP_GT:return out<<"if "<<taco.x<<" > "<<taco.y<<" goto "<<taco.z;
+  case OP_GTE:return out<<"if "<<taco.x<<" >= "<<taco.y<<" goto "<<taco.z;
+  case OP_EQ:return out<<"if "<<taco.x<<" == "<<taco.y<<" goto "<<taco.z;
+  case OP_NEQ:return out<<"if "<<taco.x<<" != "<<taco.y<<" goto "<<taco.z;
+  case OP_GOTO:return out<<"goto "<<taco.z;
 
   case OP_PARAM:return out<<"param "<<taco.z;
 
-  case OP_CALL:return out<<taco.z<<" = call "<<taco.x<<","<<taco.y;
+  case OP_CALL:return out<<taco.z<<" = call "<<taco.x<<" , "<<taco.y;
   case OP_RETURN:return out<<"return "<<taco.z;
 
   case OP_FUNC_START:return out<<"function "<<taco.z<<" starts";
@@ -40,7 +40,7 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_L_DEREF:return out<<"*"<<taco.z<<" = "<<taco.x;
   case OP_R_DEREF:return out<<taco.z<<" = * "<<taco.x;
 
-  case OP_LXC:return out<<taco.z<<"[ "<<taco.x<<" ] = "<<taco.y;
+  case OP_LXC:return out<<taco.z<<" [ "<<taco.x<<" ] = "<<taco.y;
   case OP_RXC:return out<<taco.z<<" = "<<taco.x<<" [ "<<taco.y<<" ]";
   default : break;
   }

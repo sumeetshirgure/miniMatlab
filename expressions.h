@@ -17,7 +17,7 @@ public:
   std::pair<size_t,size_t> auxSymbol;
   
   /// TODO Later
-  std::list<int> trueList , falseList;
+  std::list<size_t> trueList , falseList;
   
   Expression();
   

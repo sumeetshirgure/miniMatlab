@@ -228,7 +228,8 @@ postfix_expression "[" expression "]" "[" expression "]" {
 
     std::pair<size_t,size_t> tempRef = translator.genTemp(rowIndex.type);
     Symbol & temp = translator.getSymbol(tempRef);
-    
+
+    /* Edit this to take dimension from memory instead of symbol table. */
     translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,std::to_string(lSym.type.cols)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
     translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
@@ -639,7 +640,27 @@ shift_expression {
 }
 |
 relational_expression rel_op shift_expression {// rel_op produces one of `<' `<=' `>' `>='
-  // scalar operators only
+  std::pair<size_t,size_t> LHR , RHR;
+  LHR = getScalarBinaryOperand(translator,*this,@$,$1); // get lhs
+  RHR = getScalarBinaryOperand(translator,*this,@$,$3); // get rhs
+  Symbol & LHS = translator.getSymbol(LHR);
+  Symbol & RHS = translator.getSymbol(RHR);
+  // TACos for conversion from one basic type to another ?
+  DataType retType = MM_BOOL_TYPE;
+  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
+  Symbol & retSymbol = translator.getSymbol(retRef);
+  $$.symbol = retRef;
+  $$.trueList.push_back(translator.nextInstruction());
+  switch( $2 ){
+  case '<': translator.emit(Taco(OP_LT,"",LHS.id,RHS.id)); break;
+  case '>': translator.emit(Taco(OP_GT,"",LHS.id,RHS.id)); break;
+  case '(': translator.emit(Taco(OP_LTE,"",LHS.id,RHS.id)); break;
+  case ')': translator.emit(Taco(OP_GTE,"",LHS.id,RHS.id)); break;
+  default : throw syntax_error(@$,"Unknown relational operator.");
+  }
+  $$.falseList.push_back(translator.nextInstruction());
+  translator.emit(Taco(OP_GOTO,""));
+
 }
 ;
 
@@ -653,7 +674,25 @@ relational_expression {
 }
 |
 equality_expression eq_op relational_expression { // eq_op produces `==' or `!='
-  // scalar operators only  
+  std::pair<size_t,size_t> LHR , RHR;
+  LHR = getScalarBinaryOperand(translator,*this,@$,$1); // get lhs
+  RHR = getScalarBinaryOperand(translator,*this,@$,$3); // get rhs
+  Symbol & LHS = translator.getSymbol(LHR);
+  Symbol & RHS = translator.getSymbol(RHR);
+  // TACos for conversion from one basic type to another ?
+  DataType retType = MM_BOOL_TYPE;
+  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
+  Symbol & retSymbol = translator.getSymbol(retRef);
+  $$.symbol = retRef;
+  $$.trueList.push_back(translator.nextInstruction());
+  switch( $2 ){
+  case '=': translator.emit(Taco(OP_EQ,"",LHS.id,RHS.id)); break;
+  case '!': translator.emit(Taco(OP_NEQ,"",LHS.id,RHS.id)); break;
+  default : throw syntax_error(@$,"Unknown relational operator.");
+  }
+  $$.falseList.push_back(translator.nextInstruction());
+  translator.emit(Taco(OP_GOTO,""));
+
 }
 ;
 
@@ -667,7 +706,21 @@ equality_expression {
 }
 |
 AND_expression "&" equality_expression {
-  // integer operators only
+  std::pair<size_t,size_t> LHR , RHR;
+  LHR = getIntegerBinaryOperand(translator,*this,@$,$1); // get lhs
+  RHR = getIntegerBinaryOperand(translator,*this,@$,$3); // get rhs
+  Symbol & LHS = translator.getSymbol(LHR);
+  Symbol & RHS = translator.getSymbol(RHR);
+  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
+  if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
+    throw syntax_error(@$ , "Invalid operands." );
+  }
+  // TACos for conversion from one basic type to another ?
+  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
+  Symbol & retSymbol = translator.getSymbol(retRef);
+  translator.emit(Taco(OP_BIT_AND,retSymbol.id,LHS.id,RHS.id));// z = l & r
+  $$.symbol = retRef;
+
 }
 ;
 
@@ -678,6 +731,20 @@ AND_expression {
 }
 |
 XOR_expression "^" AND_expression {
+  std::pair<size_t,size_t> LHR , RHR;
+  LHR = getIntegerBinaryOperand(translator,*this,@$,$1); // get lhs
+  RHR = getIntegerBinaryOperand(translator,*this,@$,$3); // get rhs
+  Symbol & LHS = translator.getSymbol(LHR);
+  Symbol & RHS = translator.getSymbol(RHR);
+  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
+  if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
+    throw syntax_error(@$ , "Invalid operands." );
+  }
+  // TACos for conversion from one basic type to another ?
+  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
+  Symbol & retSymbol = translator.getSymbol(retRef);
+  translator.emit(Taco(OP_BIT_XOR,retSymbol.id,LHS.id,RHS.id));// z = l ^ r
+  $$.symbol = retRef;
 
 }
 ;
@@ -689,6 +756,20 @@ XOR_expression {
 }
 |
 OR_expression "|" XOR_expression {
+  std::pair<size_t,size_t> LHR , RHR;
+  LHR = getIntegerBinaryOperand(translator,*this,@$,$1); // get lhs
+  RHR = getIntegerBinaryOperand(translator,*this,@$,$3); // get rhs
+  Symbol & LHS = translator.getSymbol(LHR);
+  Symbol & RHS = translator.getSymbol(RHR);
+  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
+  if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
+    throw syntax_error(@$ , "Invalid operands." );
+  }
+  // TACos for conversion from one basic type to another ?
+  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
+  Symbol & retSymbol = translator.getSymbol(retRef);
+  translator.emit(Taco(OP_BIT_OR,retSymbol.id,LHS.id,RHS.id));// z = l | r
+  $$.symbol = retRef;
 
 }
 ;
@@ -700,7 +781,7 @@ OR_expression {
 }
 |
 logical_AND_expression "&&" OR_expression {
-
+  
 }
 ;
 
