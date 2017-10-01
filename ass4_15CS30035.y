@@ -244,6 +244,7 @@ postfix_expression "(" optional_argument_list ")" {
     } else {
       for(int idx = 0;idx < paramList.size(); idx++ ) {
 	Symbol & parameter = translator.getSymbol(paramList[idx].symbol);
+	/* TODO : check if paramList is a reference. If so, create a copy. */
 	if( symTable.table[idx+1].type != parameter.type ) {
 	  paramCheck = false;
 	  break;
@@ -263,7 +264,7 @@ postfix_expression "(" optional_argument_list ")" {
 
 }
 |
-postfix_expression "++" {
+postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
   Symbol & lSym = translator.getSymbol($1.symbol);
   std::swap($$,$1); // copy everything
   DataType & type = lSym.type;
@@ -282,7 +283,10 @@ postfix_expression "++" {
       translator.emit(Taco(OP_R_DEREF,retSymbol.id,lSym.id));// ret = *v
       std::pair<size_t,size_t> newRef = translator.genTemp(elementType);
       Symbol & newSymbol = translator.getSymbol(newRef);
-      translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      if( $2 == '+' )
+	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      else
+	translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
       translator.emit(Taco(OP_L_DEREF,lSym.id,newSymbol.id));//copy back : *v = temp
       $$.symbol = retRef;// returns ret
     } else if( lSym.type.isProperMatrix() ) { // reference to matrix element
@@ -293,7 +297,10 @@ postfix_expression "++" {
       translator.emit(Taco(OP_RXC,retSymbol.id,lSym.id,auxSymbol.id));// ret = m[off]
       std::pair<size_t,size_t> newRef = translator.genTemp(elementType);
       Symbol & newSymbol = translator.getSymbol(newRef);
-      translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      if( $2 == '+' )
+	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      else
+	translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
       translator.emit(Taco(OP_LXC,lSym.id,auxSymbol.id,newSymbol.id));//copy back : m[off] = temp
       $$.symbol = retRef;
       $$.isReference = false;
@@ -301,10 +308,16 @@ postfix_expression "++" {
       throw syntax_error(@$, "Invalid operand." );
     }
   } else if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE ) {
+    if( translator.isTemporary($$.symbol) ) {
+      throw syntax_error(@$, "Invalid operand." );
+    }
     std::pair<size_t,size_t> tempRef = translator.genTemp(type);
     Symbol & temp = translator.getSymbol(tempRef);
     translator.emit(Taco(OP_COPY,temp.id,lSym.id));
-    translator.emit(Taco(OP_PLUS,lSym.id,lSym.id,"1"));
+    if( $2 == '+' )
+      translator.emit(Taco(OP_PLUS,lSym.id,lSym.id,"1"));
+    else
+      translator.emit(Taco(OP_MINUS,lSym.id,lSym.id,"1"));
     $$.symbol = tempRef;
   } else if( lSym.type.isPointer() ) {
     /* TODO : support pointer arithmetic */
@@ -315,37 +328,21 @@ postfix_expression "++" {
 
 }
 |
-postfix_expression "--" {
-  throw syntax_error(@$ , "TODO.");
-}
-|
 postfix_expression ".'" {
   /* TODO : Support matrix transposition */
   throw syntax_error(@$, "Matrix transpose not supported yet.");
 }
 ;
 
+%type <char> inc_dec_op;
+inc_dec_op : "++" { $$ = '+'; } | "--" { $$ = '-'; } ;
+
 %type < std::vector<Expression> > optional_argument_list;
-optional_argument_list :
-%empty {
-}
-|
-argument_list {
-  std::swap($$,$1);
-}
-;
+optional_argument_list : %empty { } | argument_list { std::swap($$,$1); } ;
 
 %type < std::vector<Expression> > argument_list;
 argument_list :
-expression {
-  $$.push_back($1);
-}
-|
-argument_list "," expression {
-  swap($$,$1);
-  $$.push_back($3);
-}
-;
+expression { $$.push_back($1); } | argument_list "," expression { swap($$,$1); $$.push_back($3); } ;
 
 %type <Expression> unary_expression;
 unary_expression :
@@ -353,11 +350,7 @@ postfix_expression {
   std::swap($$,$1); // copy everything
 }
 |
-"++" unary_expression {
-  throw syntax_error(@$, "TODO.");
-}
-|
-"--" unary_expression {
+inc_dec_op unary_expression { // ++ / -- unary expression
   throw syntax_error(@$, "TODO.");
 }
 |
@@ -506,17 +499,11 @@ unary_operator unary_expression {
 ;
 
 %type <char> unary_operator;
-unary_operator :
- "&" { $$ = '&'; }
-|"*" { $$ = '*'; }
-|"+" { $$ = '+'; }
-|"-" { $$ = '-'; }
+unary_operator : "&" { $$ = '&'; } |"*" { $$ = '*'; } |"+" { $$ = '+'; } |"-" { $$ = '-'; } ;
 
+/// Type casting not supported yet...
 %type <Expression> cast_expression;
-cast_expression :
-unary_expression {
-  std::swap($$,$1);
-}
+cast_expression : unary_expression { std::swap($$,$1); }
 
 %type <Expression> multiplicative_expression;
 multiplicative_expression :
@@ -524,81 +511,7 @@ cast_expression {
   std::swap($$,$1);
 }
 |
-multiplicative_expression "*" cast_expression {
-  Symbol & lSym = translator.getSymbol( $1.symbol );
-  Symbol & rSym = translator.getSymbol( $3.symbol );
-  
-  std::pair<size_t,size_t> LHR , RHR;
-
-  if( $1.isReference ) {
-    if( lSym.type.isPointer() ) {
-      DataType elementType = lSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE
-	  or elementType == MM_DOUBLE_TYPE ) {
-	LHR = translator.genTemp(elementType);
-	Symbol & LHS = translator.getSymbol(LHR);
-	translator.emit(Taco(OP_R_DEREF,LHS.id,lSym.id));// lhs = *lSym
-      } else {
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else if( lSym.type.isProperMatrix() ) {
-      DataType elementType = MM_DOUBLE_TYPE;
-      LHR = translator.genTemp(elementType);
-      Symbol & LHS = translator.getSymbol(LHR);
-      Symbol & auxSymbol = translator.getSymbol($1.auxSymbol);
-      translator.emit(Taco(OP_RXC,LHS.id,lSym.id,auxSymbol.id));// lhs = m[off]
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");      
-    }
-  } else if( lSym.type == MM_CHAR_TYPE or lSym.type == MM_INT_TYPE or lSym.type == MM_DOUBLE_TYPE ) {
-    LHR = $1.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-
-  if( $3.isReference ) {
-    if( rSym.type.isPointer() ) {
-      DataType elementType = rSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE
-	  or elementType == MM_DOUBLE_TYPE ) {
-	RHR = translator.genTemp(elementType);
-	Symbol & RHS = translator.getSymbol(RHR);
-	translator.emit(Taco(OP_R_DEREF,RHS.id,rSym.id));// rhs = *rSym
-      } else {
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else if( rSym.type.isProperMatrix() ) {
-      DataType elementType = MM_DOUBLE_TYPE;
-      RHR = translator.genTemp(elementType);
-      Symbol & RHS = translator.getSymbol(RHR);
-      Symbol & auxSymbol = translator.getSymbol($3.auxSymbol);
-      translator.emit(Taco(OP_RXC,RHS.id,rSym.id,auxSymbol.id));// rhs = m[off]
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");
-    }
-  } else if( rSym.type == MM_CHAR_TYPE or rSym.type == MM_INT_TYPE or rSym.type == MM_DOUBLE_TYPE ) {
-    RHR = $3.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-
-  Symbol & LHS = translator.getSymbol(LHR);
-  Symbol & RHS = translator.getSymbol(RHR);
-  
-  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
-  if( retType == MM_VOID_TYPE ) {
-    throw syntax_error(@$ , "Invalid operands." );
-  }
-  
-  // TACos for conversion from one basic type to another ?
-  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
-  Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_MULT,retSymbol.id,LHS.id,RHS.id));
-  $$.symbol = retRef;
-
-}
-|
-multiplicative_expression "/" cast_expression {
+multiplicative_expression mul_div_op cast_expression { // mul_div_op produces `*' or `/'
   Symbol & lSym = translator.getSymbol( $1.symbol );
   Symbol & rSym = translator.getSymbol( $3.symbol );
   std::pair<size_t,size_t> LHR , RHR;
@@ -661,7 +574,10 @@ multiplicative_expression "/" cast_expression {
   // TACos for conversion from one basic type to another ?
   std::pair<size_t,size_t> retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_DIV,retSymbol.id,LHS.id,RHS.id));
+  if( $2 == '*' )
+    translator.emit(Taco(OP_MULT,retSymbol.id,LHS.id,RHS.id));
+  else
+    translator.emit(Taco(OP_DIV,retSymbol.id,LHS.id,RHS.id));
   $$.symbol = retRef;
 
 }
@@ -721,18 +637,19 @@ multiplicative_expression "%" cast_expression {
 }
 ;
 
+%type <char> mul_div_op;
+mul_div_op : "*" { $$ = '*'; } | "/" { $$ = '/'; }
+
 %type <Expression> additive_expression;
 additive_expression :
 multiplicative_expression {
   std::swap($$,$1);
 }
 |
-additive_expression "+" multiplicative_expression {
+additive_expression add_sub_op multiplicative_expression { // add_sub op produces `+' or `-'
   Symbol & lSym = translator.getSymbol( $1.symbol );
   Symbol & rSym = translator.getSymbol( $3.symbol );
-  
   std::pair<size_t,size_t> LHR , RHR;
-
   if( $1.isReference ) {
     if( lSym.type.isPointer() ) {
       DataType elementType = lSym.type; elementType.pointers--;
@@ -758,7 +675,6 @@ additive_expression "+" multiplicative_expression {
   } else {
     throw syntax_error(@$ , "Invalid operand.");
   }
-
   if( $3.isReference ) {
     if( rSym.type.isPointer() ) {
       DataType elementType = rSym.type; elementType.pointers--;
@@ -784,99 +700,27 @@ additive_expression "+" multiplicative_expression {
   } else {
     throw syntax_error(@$ , "Invalid operand.");
   }
-  /* TODO : support matrix addition /subtraction */
-
+  /* TODO : support matrix addition / subtraction */
   Symbol & LHS = translator.getSymbol(LHR);
   Symbol & RHS = translator.getSymbol(RHR);
-  
   DataType retType = mm_translator::maxType(LHS.type,RHS.type);
   if( retType == MM_VOID_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  
   // TACos for conversion from one basic type to another ?
   std::pair<size_t,size_t> retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_PLUS,retSymbol.id,LHS.id,RHS.id));
-  $$.symbol = retRef;
-
-}
-|
-additive_expression "-" multiplicative_expression {
-  Symbol & lSym = translator.getSymbol( $1.symbol );
-  Symbol & rSym = translator.getSymbol( $3.symbol );
-  
-  std::pair<size_t,size_t> LHR , RHR;
-
-  if( $1.isReference ) {
-    if( lSym.type.isPointer() ) {
-      DataType elementType = lSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE
-	  or elementType == MM_DOUBLE_TYPE ) {
-	LHR = translator.genTemp(elementType);
-	Symbol & LHS = translator.getSymbol(LHR);
-	translator.emit(Taco(OP_R_DEREF,LHS.id,lSym.id));// lhs = *lSym
-      } else {
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else if( lSym.type.isProperMatrix() ) {
-      DataType elementType = MM_DOUBLE_TYPE;
-      LHR = translator.genTemp(elementType);
-      Symbol & LHS = translator.getSymbol(LHR);
-      Symbol & auxSymbol = translator.getSymbol($1.auxSymbol);
-      translator.emit(Taco(OP_RXC,LHS.id,lSym.id,auxSymbol.id));// lhs = m[off]
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");      
-    }
-  } else if( lSym.type == MM_CHAR_TYPE or lSym.type == MM_INT_TYPE or lSym.type == MM_DOUBLE_TYPE ) {
-    LHR = $1.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-
-  if( $3.isReference ) {
-    if( rSym.type.isPointer() ) {
-      DataType elementType = rSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE
-	  or elementType == MM_DOUBLE_TYPE ) {
-	RHR = translator.genTemp(elementType);
-	Symbol & RHS = translator.getSymbol(RHR);
-	translator.emit(Taco(OP_R_DEREF,RHS.id,rSym.id));// rhs = *rSym
-      } else {
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else if( rSym.type.isProperMatrix() ) {
-      DataType elementType = MM_DOUBLE_TYPE;
-      RHR = translator.genTemp(elementType);
-      Symbol & RHS = translator.getSymbol(RHR);
-      Symbol & auxSymbol = translator.getSymbol($3.auxSymbol);
-      translator.emit(Taco(OP_RXC,RHS.id,rSym.id,auxSymbol.id));// rhs = m[off]
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");
-    }
-  } else if( rSym.type == MM_CHAR_TYPE or rSym.type == MM_INT_TYPE or rSym.type == MM_DOUBLE_TYPE ) {
-    RHR = $3.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-  /* TODO : support matrix addition /subtraction */
-  
-  Symbol & LHS = translator.getSymbol(LHR);
-  Symbol & RHS = translator.getSymbol(RHR);
-  
-  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
-  if( retType == MM_VOID_TYPE ) {
-    throw syntax_error(@$ , "Invalid operands." );
-  }
-  
-  // TACos for conversion from one basic type to another ?
-  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
-  Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_MINUS,retSymbol.id,LHS.id,RHS.id));
+  if( $2 == '+' )
+    translator.emit(Taco(OP_PLUS,retSymbol.id,LHS.id,RHS.id));
+  else
+    translator.emit(Taco(OP_MINUS,retSymbol.id,LHS.id,RHS.id));
   $$.symbol = retRef;
 
 }
 ;
+
+%type <char> add_sub_op;
+add_sub_op : "+" { $$ = '+'; } | "-" { $$ = '-'; } ;
 
 %type <Expression> shift_expression;
 shift_expression :
@@ -884,7 +728,7 @@ additive_expression {
   std::swap($$,$1);
 }
 |
-shift_expression "<<" additive_expression {
+shift_expression bit_shift_op additive_expression { // bit_shift_op produces `<<' or `>>'
   Symbol & lSym = translator.getSymbol( $1.symbol );
   Symbol & rSym = translator.getSymbol( $3.symbol );
   std::pair<size_t,size_t> LHR , RHR;
@@ -933,65 +777,17 @@ shift_expression "<<" additive_expression {
   // TACos for conversion from one basic type to another ?
   std::pair<size_t,size_t> retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_SHL,retSymbol.id,LHS.id,RHS.id));
-  $$.symbol = retRef;
-
-}
-|
-shift_expression ">>" additive_expression {
-  Symbol & lSym = translator.getSymbol( $1.symbol );
-  Symbol & rSym = translator.getSymbol( $3.symbol );
-  std::pair<size_t,size_t> LHR , RHR;
-  if( $1.isReference ) {
-    if( lSym.type.isPointer() ) {
-      DataType elementType = lSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE ) {
-	LHR = translator.genTemp(elementType);
-	Symbol & LHS = translator.getSymbol(LHR);
-	translator.emit(Taco(OP_R_DEREF,LHS.id,lSym.id));// lhs = *lSym
-      } else { // double 
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");      
-    }
-  } else if( lSym.type == MM_CHAR_TYPE or lSym.type == MM_INT_TYPE ) {
-    LHR = $1.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-  if( $3.isReference ) {
-    if( rSym.type.isPointer() ) {
-      DataType elementType = rSym.type; elementType.pointers--;
-      if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE ) {
-	RHR = translator.genTemp(elementType);
-	Symbol & RHS = translator.getSymbol(RHR);
-	translator.emit(Taco(OP_R_DEREF,RHS.id,rSym.id));// rhs = *rSym
-      } else {
-	throw syntax_error(@$ , "Invalid operand.");
-      }
-    } else {
-      throw syntax_error(@$ , "Invalid operand.");
-    }
-  } else if( rSym.type == MM_CHAR_TYPE or rSym.type == MM_INT_TYPE ) {
-    RHR = $3.symbol;
-  } else {
-    throw syntax_error(@$ , "Invalid operand.");
-  }
-  Symbol & LHS = translator.getSymbol(LHR);
-  Symbol & RHS = translator.getSymbol(RHR);
-  DataType retType = mm_translator::maxType(LHS.type,RHS.type);
-  if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
-    throw syntax_error(@$ , "Invalid operands." );
-  }
-  // TACos for conversion from one basic type to another ?
-  std::pair<size_t,size_t> retRef = translator.genTemp(retType);
-  Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_SHR,retSymbol.id,LHS.id,RHS.id));
+  if ( $2 == '<' )
+    translator.emit(Taco(OP_SHL,retSymbol.id,LHS.id,RHS.id));
+  else
+    translator.emit(Taco(OP_SHR,retSymbol.id,LHS.id,RHS.id));
   $$.symbol = retRef;
 
 }
 ;
+
+%type <char> bit_shift_op;
+bit_shift_op : "<<" { $$ = '<'; } | ">>" { $$ = '>'; } ;
 
 %type <Expression> relational_expression;
 relational_expression :
@@ -999,22 +795,13 @@ shift_expression {
   std::swap($$,$1);
 }
 |
-relational_expression "<" shift_expression {
+relational_expression rel_op shift_expression {// rel_op produces one of `<' `<=' `>' `>='
   
-}
-|
-relational_expression ">" shift_expression {
-  
-}
-|
-relational_expression "<=" shift_expression {
-  
-}
-|
-relational_expression ">=" shift_expression {
-  // TODO
 }
 ;
+
+%type <char> rel_op;
+rel_op : "<" { $$ = '<'; } | ">" { $$ = '>'; } | "<=" { $$ ='('; } | ">=" { $$ = ')'; };
 
 %type <Expression> equality_expression;
 equality_expression :
@@ -1022,14 +809,13 @@ relational_expression {
   std::swap($$,$1);
 }
 |
-equality_expression "==" relational_expression {
-
-}
-|
-equality_expression "!=" relational_expression {
-
+equality_expression eq_op relational_expression { // eq_op produces `==' or `!='
+  
 }
 ;
+
+%type <char> eq_op;
+eq_op : "==" { $$ = '='; } | "!=" { $$ = '!'; } ;
 
 %type <Expression> AND_expression;
 AND_expression :
