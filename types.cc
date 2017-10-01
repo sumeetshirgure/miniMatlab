@@ -53,6 +53,10 @@ bool DataType::isDoubleType() {
   return rows == 0 and cols == 5;
 }
 
+bool DataType::isProperMatrix() {
+  return pointers==0 and rows != 0 and cols != 0 ;
+}
+
 bool DataType::isMalformedType() {
   if( cols == 0 and rows != 0 )
     return true;

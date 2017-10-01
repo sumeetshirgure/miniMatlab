@@ -65,6 +65,9 @@ public:
   /* Checks if base type is double */
   bool isDoubleType();
 
+  /* Checks if type is proper matrix */
+  bool isProperMatrix();
+  
   /* Checks if type definition is malformed */
   bool isMalformedType();
 };

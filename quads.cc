@@ -6,7 +6,7 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_MINUS:return out<<taco.z<<" = "<<taco.x<<" - "<<taco.y;
   case OP_MULT:return out<<taco.z<<" = "<<taco.x<<" * "<<taco.y;
   case OP_DIV:return out<<taco.z<<" = "<<taco.x<<" / "<<taco.y;
-  case OP_MOD:return out<<taco.z<<" = "<<taco.x<<" * "<<taco.y;
+  case OP_MOD:return out<<taco.z<<" = "<<taco.x<<" % "<<taco.y;
   case OP_BIT_AND:return out<<taco.z<<" = "<<taco.x<<" & "<<taco.y;
   case OP_BIT_XOR:return out<<taco.z<<" = "<<taco.x<<" ^ "<<taco.y;
   case OP_BIT_OR:return out<<taco.z<<" = "<<taco.x<<" | "<<taco.y;
