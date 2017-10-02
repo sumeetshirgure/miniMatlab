@@ -17,7 +17,7 @@ static yy::location scan_loc;
 %option noyywrap nounput batch debug noinput
 
 /* Token patterns */
-identifier [[:alpha:]][[:alnum:]]*
+identifier [_[:alpha:]][_[:alnum:]]*
 
 integer_constant [1-9][0-9]*
 
@@ -85,7 +85,7 @@ zero_constant "0"
 
 {character_constant} return yy::mm_parser::make_CHARACTER_CONSTANT(yytext,scan_loc);
 
-{integer_constant} {
+{integer_constant}|{zero_constant} {
   long val = strtol(yytext,NULL,10);
   if( val < INT_MIN or val > INT_MAX or errno == ERANGE ){
     translator.error(scan_loc,"Warning : Integer constant out of range.");
