@@ -4,11 +4,11 @@
 #include <iostream>
 
 /* Supposed to be machine dependant constants */
-const size_t SIZE_OF_PTR = 4;
-const size_t SIZE_OF_CHAR = 1;
-const size_t SIZE_OF_BOOL = 1;
-const size_t SIZE_OF_INT = 4;
-const size_t SIZE_OF_DOUBLE = 8;
+const unsigned int SIZE_OF_PTR = 4;
+const unsigned int SIZE_OF_CHAR = 1;
+const unsigned int SIZE_OF_BOOL = 1;
+const unsigned int SIZE_OF_INT = 4;
+const unsigned int SIZE_OF_DOUBLE = 8;
 
 /**
    Class for defining data types and their reference level.
@@ -26,10 +26,10 @@ const size_t SIZE_OF_DOUBLE = 8;
 class DataType {
 public:
   
-  size_t pointers,rows,cols;
+  unsigned int pointers,rows,cols;
   
   /* Default constructor : should create a void datatype */
-  DataType(size_t _pointers = 0, size_t _rows = 0, size_t _cols = 1) :
+  DataType(unsigned int _pointers = 0, unsigned int _rows = 0, unsigned int _cols = 1) :
     pointers(_pointers) , rows(_rows) , cols(_cols) { }
 
   /* Default copy constructor */
@@ -42,7 +42,7 @@ public:
   bool isPointer() ;
     
   /* Returns the size of an object of this datatype */
-  size_t getSize() ;
+  unsigned int getSize() ;
   
   /* Checks if two type are the same */
   bool operator == (const DataType &) ;
@@ -50,21 +50,6 @@ public:
   /* Checks if two type are not the same */
   bool operator != (const DataType &) ;
   
-  /* Checks if base type is void */
-  bool isVoidType();
-
-  /* Checks if base type is Bool */
-  bool isBoolType();
-
-  /* Checks if base type is char */
-  bool isCharType();
-
-  /* Checks if base type is int */
-  bool isIntType();
-  
-  /* Checks if base type is double */
-  bool isDoubleType();
-
   /* Checks if type is proper matrix */
   bool isProperMatrix();
   

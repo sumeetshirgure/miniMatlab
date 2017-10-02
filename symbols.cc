@@ -3,11 +3,11 @@
 Symbol::Symbol ( ) :
   id(""),type(MM_VOID_TYPE),offset(0),isInitialized(false),child(0) { }
 // Empty symbol
-Symbol::Symbol (const std::string & _id, const DataType & _type,size_t _offset) :
+Symbol::Symbol (const std::string & _id, const DataType & _type,unsigned int _offset) :
   id(_id),type(_type),offset(_offset),isInitialized(false),child(0) { }
 
 // Initialized symbol
-Symbol::Symbol (const std::string & _id, const DataType & _type,size_t _offset,InitialValue _value) :
+Symbol::Symbol (const std::string & _id, const DataType & _type,unsigned int _offset,InitialValue _value) :
   id(_id),type(_type),offset(_offset),isInitialized(true),value(_value),child(0) { }
 
 Symbol::~Symbol () {
@@ -35,14 +35,14 @@ std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
   return out;
 }
 
-SymbolTable::SymbolTable(size_t _id,const std::string& _name="") :
+SymbolTable::SymbolTable(unsigned int _id,const std::string& _name="") :
   id(_id),name(_name),offset(0),params(0) { }
 
 SymbolTable::~SymbolTable() {
   table.clear();
 }
 
-size_t SymbolTable::lookup (const std::string & id) {
+unsigned int SymbolTable::lookup (const std::string & id) {
   for( int idx = 0 ; idx < table.size() ; idx++ ) {
     if( table[idx].id == id ) {
       return idx;
@@ -51,7 +51,7 @@ size_t SymbolTable::lookup (const std::string & id) {
   throw 1;
 }
 
-size_t SymbolTable::lookup (const std::string & id , DataType & type) {
+unsigned int SymbolTable::lookup (const std::string & id , DataType & type) {
   for( int idx = 0 ; idx < table.size() ; idx++ ) {
     if( table[idx].id == id ) {
       throw 1;

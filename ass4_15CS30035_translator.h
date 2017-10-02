@@ -51,26 +51,26 @@ public:
   std::vector<Taco> quadArray; // Address of a taco is its index in quadArray
   void emit( const Taco & );
   void printQuadArray();
-  size_t nextInstruction();
+  unsigned int nextInstruction();
   
   // Link jump instructions to target
-  void patchBack(size_t ,size_t );
-  void patchBack(std::list<size_t>& , size_t);
+  void patchBack(unsigned int ,unsigned int );
+  void patchBack(AddressList & , unsigned int);
   
   // Temporary symbol generation
   int temporaryCount ;
 
   // get symbol by {tableIndex , entryIndex}
-  Symbol & getSymbol(const std::pair<size_t,size_t> & ref);
+  Symbol & getSymbol(const SymbolRef & ref);
   
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference
-  std::pair<size_t,size_t> genTemp( DataType & ) ;
-  // the symbol table is provided
-  std::pair<size_t,size_t> genTemp( size_t , DataType & ) ;
+  SymbolRef genTemp( DataType & ) ;
+  // the symbol table id is provided
+  SymbolRef genTemp( unsigned int , DataType & ) ;
   
   // Update offsets of a symbol table
-  void updateSymbolTable(size_t);
+  void updateSymbolTable(unsigned int);
   
   // Print all tables
   void printSymbolTable();
@@ -85,8 +85,8 @@ public:
 
   // Symbol table management
   /* Pushes a new environment and returns a pointer to it */
-  size_t newEnvironment(const std::string&);
-  size_t currentEnvironment();
+  unsigned int newEnvironment(const std::string&);
+  unsigned int currentEnvironment();
   SymbolTable & currentTable();
   void popEnvironment();
   
@@ -97,7 +97,7 @@ public:
   /* Helper functions */
   
   // returns wether given symbol is a temporary
-  bool isTemporary(std::pair<size_t,size_t> & );
+  bool isTemporary(const SymbolRef & );
 
   /* Returns the greater of two types in basic type heirarchy 
      To be used only for non-matrix types only.

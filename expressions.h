@@ -4,20 +4,22 @@
 #include "symbols.h"
 #include <list>
 
+typedef std::list<unsigned int> AddressList;
+
 class Expression {
 public:
 
   /* Symbol corresponding to ( temporary ) variable holding
      the value of this expression.*/
-  std::pair<size_t,size_t> symbol ;
+  SymbolRef symbol ;
 
   /* Flags if l-value */
   bool isReference;
   /* Auxiliary symbol to store offsets */
-  std::pair<size_t,size_t> auxSymbol;
+  SymbolRef auxSymbol;
   
-  /// TODO Later
-  std::list<size_t> trueList , falseList;
+  /// Jump statements corresponding to true/false evaluations
+  AddressList trueList , falseList;
   
   Expression();
   
