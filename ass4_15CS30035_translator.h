@@ -13,18 +13,14 @@ YY_DECL;
 /* Include 3 address code definitions */
 #include "quads.h"
 
-/* Include datatype defintions */
+/* Include datatype definitions */
 #include "types.h"
 
-/* Default datatype constants */
-const DataType MM_VOID_TYPE(0,0);
-const DataType MM_BOOL_TYPE(0,1); // implicit
-const DataType MM_CHAR_TYPE(0,2);
-const DataType MM_INT_TYPE(0,3);
-const DataType MM_DOUBLE_TYPE(0,4);
-const DataType MM_MATRIX_TYPE(0,5);
-const DataType MM_FUNC_TYPE(0,6);
-const DataType MM_MATRIX_ROW_TYPE(0,7); // implicit
+/* Include symbol definitions */
+#include "symbols.h"
+
+/* Include expression definitions */
+#include "expressions.h"
 
 /**
    Minimatlab translator class. An mm_translator object is used
@@ -49,6 +45,7 @@ public:
   // error handlers
   void error(const yy::location&,const std::string&);
   void error(const std::string&);
+  bool trace_tacos;
   
   // Code generation
   std::vector<Taco> quadArray; // Address of a taco is its index in quadArray
@@ -56,8 +53,58 @@ public:
   void printQuadArray();
   size_t nextInstruction();
   
+  // Link jump instructions to target
+  void patchBack(size_t ,size_t );
+  void patchBack(std::list<size_t>& , size_t);
+  
+  // Temporary symbol generation
+  int temporaryCount ;
+
+  // get symbol by {tableIndex , entryIndex}
+  Symbol & getSymbol(const std::pair<size_t,size_t> & ref);
+  
+  // generate a temporary and store it in the current table.
+  // return the generated symbol's reference
+  std::pair<size_t,size_t> genTemp( DataType & ) ;
+  // the symbol table is provided
+  std::pair<size_t,size_t> genTemp( size_t , DataType & ) ;
+  
+  // Update offsets of a symbol table
+  void updateSymbolTable(size_t);
+  
+  // Print all tables
+  void printSymbolTable();
+  
+  // Parsing context information
+  /* The global symbol table */
+  SymbolTable & globalTable ();
+  
+  /* Symbol table of the current locality */
+  std::vector<SymbolTable> tables;
+  std::stack<int> environment;
+
+  // Symbol table management
+  /* Pushes a new environment and returns a pointer to it */
+  size_t newEnvironment(const std::string&);
+  size_t currentEnvironment();
+  SymbolTable & currentTable();
+  void popEnvironment();
+  
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
+
+
+  /* Helper functions */
+  
+  // returns wether given symbol is a temporary
+  bool isTemporary(std::pair<size_t,size_t> & );
+
+  /* Returns the greater of two types in basic type heirarchy 
+     To be used only for non-matrix types only.
+     If either is void or function or pointer : returns void.
+  */
+  static DataType maxType( DataType & , DataType & );
+  
 };
 
 #endif /* ! MM_TRANSLATOR_H */

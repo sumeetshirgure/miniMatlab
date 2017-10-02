@@ -3,11 +3,18 @@
 
 /* Constructor for translator */
 mm_translator::mm_translator() :
-  trace_scan(false) , trace_parse(false) {
+  trace_scan(false) , trace_parse(false) , trace_tacos(false) {
+
+  temporaryCount = 0; // initialize tempCount to 0  
+  newEnvironment("globalTable"); // initialize global table
+  globalTable().parent = 0;
 }
 
 /* Destructor for translator */
-mm_translator::~mm_translator() { }
+mm_translator::~mm_translator() {
+  tables.clear();
+  while( not environment.empty() ) environment.pop();
+}
 
 /**
  * Translate file
@@ -47,17 +54,117 @@ void mm_translator::error (const std::string &msg) {
 }
 
 void mm_translator::emit (const Taco & taco) {
+  if(trace_tacos) std::cerr << "Emitted :\t" << taco << std::endl;
   quadArray.emplace_back( taco );
 }
 
 void mm_translator::printQuadArray () {
   for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
-    std::cout << quadArray[idx] << std::endl;
+    std::cout << idx << "\t" << quadArray[idx] << std::endl;
   }
 }
 
 size_t mm_translator::nextInstruction() {
   return quadArray.size();
+}
+
+SymbolTable & mm_translator::globalTable() {
+  return tables[0];
+}
+
+size_t mm_translator::newEnvironment(const std::string &name="") {
+  size_t idx = tables.size();
+  environment.push(idx);// push the address to new symbol table
+  tables.push_back(SymbolTable(idx,name));
+  return idx;
+}
+
+size_t mm_translator::currentEnvironment() {
+  return environment.top();
+}
+
+SymbolTable & mm_translator::currentTable() {
+  return tables[environment.top()];
+}
+
+void mm_translator::popEnvironment() {
+  environment.pop();
+}
+
+Symbol & mm_translator::getSymbol(const std::pair<size_t,size_t> & ref) {
+  return tables[ref.first].table[ref.second];
+}
+
+std::pair<size_t,size_t> mm_translator::genTemp(DataType & type) {
+  std::string tempId = "#" + std::to_string(++temporaryCount);
+  /* # so it won't collide with any existing non-temporary entries */
+  int idx = currentEnvironment();
+  return std::make_pair(idx,tables[idx].lookup(tempId,type));
+}
+
+std::pair<size_t,size_t> mm_translator::genTemp(size_t idx , DataType & type) {
+  std::string tempId = "#" + std::to_string(++temporaryCount);
+  /* # so it won't collide with any existing non-temporary entries */
+  return std::make_pair(idx,tables[idx].lookup(tempId,type));
+}
+
+// simply check first character of id
+bool mm_translator::isTemporary(std::pair<size_t,size_t> & ref) {
+  Symbol & symbol = getSymbol(ref);
+  return symbol.id.length() > 0 and symbol.id[0] == '#';
+}
+
+void mm_translator::updateSymbolTable(size_t tableId) {
+  SymbolTable & symbolTable = tables[tableId];
+  for(int idx = 0; idx<symbolTable.table.size(); idx++) {
+    if( idx + 1 < symbolTable.table.size() ) {
+      Symbol & curSymbol = symbolTable.table[idx];
+      Symbol & nextSymbol = symbolTable.table[idx+1];
+      nextSymbol.offset = curSymbol.offset + curSymbol.type.getSize();
+      symbolTable.offset = nextSymbol.offset + nextSymbol.type.getSize();
+    }
+  }
+}
+
+/* Print the entire symbol table */
+void mm_translator::printSymbolTable() {
+  for( int i = 0; i < tables.size() ; i++ ) {
+    std::cout << tables[i] << std::endl;
+  }
+}
+
+/* Max type */
+DataType mm_translator::maxType(DataType & t1,DataType & t2) {
+  if( t1.isPointer() or t1==MM_VOID_TYPE or t1==MM_FUNC_TYPE )
+    return MM_VOID_TYPE;
+  if( t2.isPointer() or t2==MM_VOID_TYPE or t2==MM_FUNC_TYPE )
+    return MM_VOID_TYPE;
+  
+  if( t1 == MM_DOUBLE_TYPE or t2 == MM_DOUBLE_TYPE )
+    return MM_DOUBLE_TYPE;
+  if( t1 == MM_INT_TYPE or t2 == MM_INT_TYPE )
+    return MM_INT_TYPE;
+  if( t1 == MM_CHAR_TYPE or t2 == MM_CHAR_TYPE )
+    return MM_CHAR_TYPE;
+  if( t1 == MM_BOOL_TYPE or t2 == MM_BOOL_TYPE )
+    return MM_BOOL_TYPE;
+  
+  return MM_VOID_TYPE;
+}
+
+void mm_translator::patchBack(size_t idx,size_t address){
+  quadArray[idx].z = std::to_string(address);
+  if( trace_tacos )
+    std::cerr << "Goto @" << idx << " linked to " << address << std::endl;;
+}
+
+void mm_translator::patchBack(std::list<size_t>& quadList,size_t address){
+  std::string target = std::to_string(address);
+  for(std::list<size_t>::iterator it=quadList.begin();it!=quadList.end();it++) {
+    quadArray[*it].z = target;
+    if( trace_tacos )
+      std::cerr << "Goto @" << *it << " linked to " << address << std::endl;;
+  }
 }
 
 /* Main translation driver */
@@ -70,21 +177,27 @@ int main( int argc , char * argv[] ){
     return 1;
   }
   
-  bool trace_scan = false , trace_parse = false;
+  bool trace_scan = false , trace_parse = false , trace_tacos = false;
   for(int i=1;i<argc;i++){
     string cmd = string(argv[i]);
     if(cmd == "--trace-scan") {
       trace_scan = true;
     } else if(cmd == "--trace-parse") {
       trace_parse = true;
+    } else if(cmd == "--trace-tacos") {
+      trace_tacos = true;      
     } else {
       mm_translator translator;
       translator.trace_parse = trace_parse;
       translator.trace_scan = trace_scan;
+      translator.trace_tacos = trace_tacos;
       int result = translator.translate(cmd);
-      if(result) cout << cmd << " : Translation failed " << endl;
+      if(result != 0) cout << cmd << " : Translation failed " << endl;
       else {
+	cout << "3 Address codes :" << endl;
 	translator.printQuadArray();
+	cout << endl << "Symbol tables : " << endl;
+	translator.printSymbolTable();
 	cout << cmd << " : Translation completed successfully " << endl;
       }
     }

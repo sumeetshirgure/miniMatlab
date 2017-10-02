@@ -83,7 +83,35 @@ zero_constant "0"
 
 {string_literal} return yy::mm_parser::make_STRING_LITERAL(yytext,scan_loc);
 
-{character_constant} return yy::mm_parser::make_CHARACTER_CONSTANT(yytext,scan_loc);
+{character_constant} {
+  char ret = yytext[0];
+  // "\\'"|"\\\""|"\\?"|"\\\\"|"\\a"|"\\b"|"\\f"|"\\n"|"\\r"|"\\t"|"\\v"
+  if( yytext[1] == '\\' ) {
+    if( yyleng > 4 ) {
+      translator.error (scan_loc, "Warning : Improper character constant." );
+    }
+    switch( yytext[2] ) {
+    case '\'': ret = '\'';break;
+    case '"': ret = '"';break;
+    case '?': ret = '?';break;
+    case '\\': ret = '\\';break;
+    case 'a': ret = '\a';break;
+    case 'b': ret = '\b';break;
+    case 'f': ret = '\f';break;
+    case 'n': ret = '\n';break;
+    case 'r': ret = '\r';break;
+    case 't': ret = '\t';break;
+    case 'v': ret = '\v';break;
+    default : ret = '\0';
+    }
+  } else {
+    if( yyleng > 3 ) {
+      translator.error (scan_loc, "Warning : Improper character constant." );
+    }
+    ret = yytext[1];
+  }
+  return yy::mm_parser::make_CHARACTER_CONSTANT(ret,scan_loc);
+}
 
 {integer_constant}|{zero_constant} {
   long val = strtol(yytext,NULL,10);
