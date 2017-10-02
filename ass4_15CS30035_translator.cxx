@@ -3,7 +3,7 @@
 
 /* Constructor for translator */
 mm_translator::mm_translator() :
-  trace_scan(false) , trace_parse(false) {
+  trace_scan(false) , trace_parse(false) , trace_tacos(false) {
 
   temporaryCount = 0; // initialize tempCount to 0  
   newEnvironment("globalTable"); // initialize global table
@@ -54,13 +54,13 @@ void mm_translator::error (const std::string &msg) {
 }
 
 void mm_translator::emit (const Taco & taco) {
-  // std::cerr << "emitted : " << taco << std::endl;
+  if(trace_tacos) std::cerr << "Emitted :\t" << taco << std::endl;
   quadArray.emplace_back( taco );
 }
 
 void mm_translator::printQuadArray () {
   for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
-    std::cout << idx << " " << quadArray[idx] << std::endl;
+    std::cout << idx << "\t" << quadArray[idx] << std::endl;
   }
 }
 
@@ -152,6 +152,21 @@ DataType mm_translator::maxType(DataType & t1,DataType & t2) {
   return MM_VOID_TYPE;
 }
 
+void mm_translator::patchBack(size_t idx,size_t address){
+  quadArray[idx].z = std::to_string(address);
+  if( trace_tacos )
+    std::cerr << "Goto @" << idx << " linked to " << address << std::endl;;
+}
+
+void mm_translator::patchBack(std::list<size_t>& quadList,size_t address){
+  std::string target = std::to_string(address);
+  for(std::list<size_t>::iterator it=quadList.begin();it!=quadList.end();it++) {
+    quadArray[*it].z = target;
+    if( trace_tacos )
+      std::cerr << "Goto @" << *it << " linked to " << address << std::endl;;
+  }
+}
+
 /* Main translation driver */
 int main( int argc , char * argv[] ){
   using namespace std ;
@@ -162,17 +177,20 @@ int main( int argc , char * argv[] ){
     return 1;
   }
   
-  bool trace_scan = false , trace_parse = false;
+  bool trace_scan = false , trace_parse = false , trace_tacos = false;
   for(int i=1;i<argc;i++){
     string cmd = string(argv[i]);
     if(cmd == "--trace-scan") {
       trace_scan = true;
     } else if(cmd == "--trace-parse") {
       trace_parse = true;
+    } else if(cmd == "--trace-tacos") {
+      trace_tacos = true;      
     } else {
       mm_translator translator;
       translator.trace_parse = trace_parse;
       translator.trace_scan = trace_scan;
+      translator.trace_tacos = trace_tacos;
       int result = translator.translate(cmd);
       if(result != 0) cout << cmd << " : Translation failed " << endl;
       else {

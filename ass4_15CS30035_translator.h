@@ -45,13 +45,18 @@ public:
   // error handlers
   void error(const yy::location&,const std::string&);
   void error(const std::string&);
+  bool trace_tacos;
   
   // Code generation
   std::vector<Taco> quadArray; // Address of a taco is its index in quadArray
   void emit( const Taco & );
   void printQuadArray();
   size_t nextInstruction();
-
+  
+  // Link jump instructions to target
+  void patchBack(size_t ,size_t );
+  void patchBack(std::list<size_t>& , size_t);
+  
   // Temporary symbol generation
   int temporaryCount ;
 

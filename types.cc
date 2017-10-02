@@ -80,7 +80,7 @@ std::ostream & operator << (std::ostream & out , const DataType & type) {
     default: out << " ! Unknown type "; break;
     }
   } else {
-    out << "M (" << type.rows << "," << type.cols << ")";
+    out << "M(" << type.rows << "," << type.cols << ")";
   }
   for( int level = 0; level < type.pointers ; level++ )
     out << '*';
