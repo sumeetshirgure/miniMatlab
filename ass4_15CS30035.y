@@ -11,6 +11,9 @@
 %define api.value.type variant;
 %define parse.assert;
 
+/* Expect only 1 shift/reduce conflict on "else" token. */
+%expect 1;
+
 %code requires {
 #include <string>
 #include "types.h"
@@ -218,16 +221,18 @@ postfix_expression "[" expression "]" "[" expression "]" {
   Symbol & lSym = translator.getSymbol($1.symbol);
   std::swap($$,$1);
   
-  Symbol & rowIndex = translator.getSymbol($3.symbol);
-  Symbol & colIndex = translator.getSymbol($6.symbol);
-  if( rowIndex.type != MM_INT_TYPE or colIndex.type != MM_INT_TYPE ) {
-    throw syntax_error(@$ , "Non-integral index for matrix " + lSym.id + "." );
-  }
-  
   if( !$$.isReference and lSym.type.isProperMatrix() ) {// simple matricks
-    SymbolRef tempRef = translator.genTemp(rowIndex.type);
+    DataType addressType = MM_INT_TYPE;
+    SymbolRef tempRef = translator.genTemp(addressType);
     Symbol & temp = translator.getSymbol(tempRef);
-    /* Edit this to take dimension from memory instead of symbol table. */
+    
+    Symbol & rowIndex = translator.getSymbol($3.symbol);
+    Symbol & colIndex = translator.getSymbol($6.symbol);
+    if( rowIndex.type != MM_INT_TYPE or colIndex.type != MM_INT_TYPE ) {
+      throw syntax_error(@$ , "Non-integral index for matrix " + lSym.id + "." );
+    }
+
+    /* Edit this to take dimension from memory instead of symbol table.? */
     translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,std::to_string(lSym.type.cols)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
     translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
@@ -290,9 +295,9 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
 	throw syntax_error(@$ , "Invalid operand.");
       }
       SymbolRef retRef = translator.genTemp(elementType);
+      SymbolRef newRef = translator.genTemp(elementType);
       Symbol & retSymbol = translator.getSymbol(retRef);
       translator.emit(Taco(OP_R_DEREF,retSymbol.id,lSym.id));// ret = *v
-      SymbolRef newRef = translator.genTemp(elementType);
       Symbol & newSymbol = translator.getSymbol(newRef);
       if( $2 == '+' )
 	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
@@ -302,11 +307,11 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
       $$.symbol = retRef;// returns ret
     } else if( lSym.type.isProperMatrix() ) { // reference to matrix element
       DataType elementType = MM_DOUBLE_TYPE;
-      Symbol & auxSymbol = translator.getSymbol($$.auxSymbol);
       SymbolRef retRef = translator.genTemp(elementType);
-      Symbol & retSymbol = translator.getSymbol(retRef);
-      translator.emit(Taco(OP_RXC,retSymbol.id,lSym.id,auxSymbol.id));// ret = m[off]
       SymbolRef newRef = translator.genTemp(elementType);
+      Symbol & retSymbol = translator.getSymbol(retRef);
+      Symbol & auxSymbol = translator.getSymbol($$.auxSymbol);
+      translator.emit(Taco(OP_RXC,retSymbol.id,lSym.id,auxSymbol.id));// ret = m[off]
       Symbol & newSymbol = translator.getSymbol(newRef);
       if( $2 == '+' )
 	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
@@ -834,6 +839,7 @@ logical_OR_expression {
 }
 |
 logical_OR_expression instruction_mark "?" expression insert_jump ":" conditional_expression {
+  // Remove this entirely ?
   Symbol & lSym = translator.getSymbol($1.symbol);
   if( lSym.type != MM_BOOL_TYPE ) throw syntax_error(@$,"Invalid operand.");
   translator.patchBack($1.trueList,$2); // on the mark
@@ -1120,28 +1126,15 @@ initializer_row "," expression {
 /***********************STATEMENT NON-TERMINALS************************/
 /**********************************************************************/
 
+%type <AddressList> statement;
 statement :
-compound_statement {
-  
-}
-|
-expression_statement {
+  compound_statement { std::swap($$,$1); }
+| selection_statement { std::swap($$,$1); }
+| iteration_statement { std::swap($$,$1); }
+| jump_statement      { std::swap($$,$1); }
+| expression_statement { } ;
 
-}
-|
-selection_statement {
-
-}
-|
-iteration_statement {
-
-}
-|
-jump_statement {
-
-}
-;
-
+%type <AddressList> compound_statement;
 compound_statement :
 "{" {
   /* LBrace encountered : push a new symbol table and link it to its parent */
@@ -1157,45 +1150,54 @@ compound_statement :
   SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
 } optional_block_item_list "}" {
+  std::swap($$,$3);
   translator.popEnvironment();
 }
 ;
 
+%type <AddressList> optional_block_item_list;
 optional_block_item_list :
-%empty
-|
-optional_block_item_list block_item {
+%empty { } |
+block_item_list { std::swap($$,$1); } ; // merge lists
 
+%type <AddressList> block_item_list;
+block_item_list : block_item { std::swap($$,$1); } |
+block_item_list instruction_mark block_item {
+  translator.patchBack($1,$2);
+  std::swap($$,$3);
 }
-;
 
-block_item :
-declaration {
 
-}
-|
-statement {
-
-}
-;
+%type <AddressList> block_item;
+block_item : declaration { } | statement { std::swap($$ , $1); } ;
 
 expression_statement :
 optional_expression ";" {
+  // patch back all instructions
+  translator.patchBack($1.trueList,translator.nextInstruction());
+  translator.patchBack($1.falseList,translator.nextInstruction());
+} ;
+
+/* 1 shift-reduce conflict arising out of this rule. Only this one is to be expected. */
+%type <AddressList> selection_statement;
+selection_statement :
+"if" "(" expression ")" instruction_mark statement {
+  /*
+  Symbol & boolExp = translator.getSymbol($3.symbol);
+  if( boolExp.type != MM_BOOL_TYPE ) {
+    throw syntax_error(@3,"Not a boolean expression.");
+  }
+  translator.patchBack($3.trueList,$5);
+  std::swap($$,$3.falseList);
+  $$.splice($$.end(),$6);*/
+}
+|
+"if" "(" expression ")" instruction_mark statement "else" instruction_mark statement {
   
 }
 ;
 
-/* 1 shift-reduce conflict arising out of this rule. Only this one is to be expected. */
-selection_statement :
-"if" "(" expression ")" statement {
-
-}
-|
-"if" "(" expression ")" statement "else" statement {
-
-}
-;
-
+%type <AddressList> iteration_statement;
 iteration_statement :
 "while" "(" expression ")" statement {
 
@@ -1211,18 +1213,16 @@ iteration_statement :
 /* Declaration inside for is not supported */
 ;
 
+%type <AddressList> jump_statement;
 jump_statement :
 "return" optional_expression ";" {
   
 }
 ;
 
+%type <Expression> optional_expression;
 optional_expression :
-%empty
-|
-expression {
-  // TODO : patch back all unassigned jump expressions
-}
+%empty { } | expression { std::swap($$,$1); }
 ;
 /**********************************************************************/
 
@@ -1290,27 +1290,29 @@ getScalarBinaryOperand(mm_translator & translator,
 		       const yy::location& loc,
 		       Expression & expr ) {
   SymbolRef ret ;
-  Symbol & sym = translator.getSymbol(expr.symbol);
+  DataType rType = translator.getSymbol(expr.symbol).type;
   if( expr.isReference ) {
-    if( sym.type.isPointer() ) {
-      DataType elementType = sym.type; elementType.pointers--;
+    if( rType.isPointer() ) {
+      DataType elementType = rType; elementType.pointers--;
       if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE or elementType == MM_DOUBLE_TYPE ) {
 	ret = translator.genTemp(elementType);
+	Symbol & rhs = translator.getSymbol(expr.symbol);
 	Symbol & retSymbol = translator.getSymbol(ret);
-	translator.emit(Taco(OP_R_DEREF,retSymbol.id,sym.id));// ret = *sym
+	translator.emit(Taco(OP_R_DEREF,retSymbol.id,rhs.id));// ret = *rhs
       } else { // non scalar operand
         parser.error(loc , "Invalid operand.");
       }
-    } else if( sym.type.isProperMatrix() ) { // matrix element
+    } else if( rType.isProperMatrix() ) { // matrix element
       DataType elementType = MM_DOUBLE_TYPE;
       ret = translator.genTemp(elementType);
       Symbol & retSymbol = translator.getSymbol(ret);
+      Symbol & rhs = translator.getSymbol(expr.symbol);
       Symbol & auxSymbol = translator.getSymbol(expr.auxSymbol);
-      translator.emit(Taco(OP_RXC,retSymbol.id,sym.id,auxSymbol.id));// lhs = m[off]
+      translator.emit(Taco(OP_RXC,retSymbol.id,rhs.id,auxSymbol.id));// lhs = m[off]
     } else {
       parser.error(loc , "Invalid operand.");
     }
-  } else if( sym.type == MM_CHAR_TYPE or sym.type == MM_INT_TYPE or sym.type == MM_DOUBLE_TYPE ) {
+  } else if( rType == MM_CHAR_TYPE or rType == MM_INT_TYPE or rType == MM_DOUBLE_TYPE ) {
     ret = expr.symbol;
   } else { // non scalar operand
     parser.error(loc , "Invalid operand.");
@@ -1324,21 +1326,22 @@ getIntegerBinaryOperand(mm_translator & translator,
 		       const yy::location& loc,
 		       Expression & expr ) {
   SymbolRef ret ;
-  Symbol & sym = translator.getSymbol(expr.symbol);
+  DataType rType = translator.getSymbol(expr.symbol).type;
   if( expr.isReference ) {
-    if( sym.type.isPointer() ) {
-      DataType elementType = sym.type; elementType.pointers--;
+    if( rType.isPointer() ) {
+      DataType elementType = rType; elementType.pointers--;
       if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE ) {
 	ret = translator.genTemp(elementType);
+	Symbol & rhs = translator.getSymbol(expr.symbol);
 	Symbol & retSymbol = translator.getSymbol(ret);
-	translator.emit(Taco(OP_R_DEREF,retSymbol.id,sym.id));// ret = *sym
+	translator.emit(Taco(OP_R_DEREF,retSymbol.id,rhs.id));// ret = *rhs
       } else { // double
         parser.error(loc , "Invalid operand.");
       }
     } else { // matrix element
       parser.error(loc , "Invalid operand.");
     }
-  } else if( sym.type == MM_CHAR_TYPE or sym.type == MM_INT_TYPE ) {
+  } else if( rType == MM_CHAR_TYPE or rType == MM_INT_TYPE ) {
     ret = expr.symbol;
   } else { // non scalar operand
     parser.error(loc , "Invalid operand.");

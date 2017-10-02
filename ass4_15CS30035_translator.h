@@ -61,7 +61,7 @@ public:
   int temporaryCount ;
 
   // get symbol by {tableIndex , entryIndex}
-  Symbol & getSymbol(const SymbolRef & ref);
+  Symbol & getSymbol(SymbolRef ref);
   
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference

@@ -91,7 +91,7 @@ void mm_translator::popEnvironment() {
   environment.pop();
 }
 
-Symbol & mm_translator::getSymbol(const SymbolRef & ref) {
+Symbol & mm_translator::getSymbol(SymbolRef ref) {
   return tables[ref.first].table[ref.second];
 }
 
@@ -155,7 +155,7 @@ DataType mm_translator::maxType(DataType & t1,DataType & t2) {
 void mm_translator::patchBack(unsigned int idx,unsigned int address){
   quadArray[idx].z = std::to_string(address);
   if( trace_tacos )
-    std::cerr << "Goto @" << idx << " linked to " << address << std::endl;;
+    std::cerr << "Goto @" << idx << " linked to " << address << std::endl;
 }
 
 void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int address){
@@ -163,7 +163,7 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
   for(std::list<unsigned int>::iterator it=quadList.begin();it!=quadList.end();it++) {
     quadArray[*it].z = target;
     if( trace_tacos )
-      std::cerr << "Goto @" << *it << " linked to " << address << std::endl;;
+      std::cerr << "Goto @" << *it << " linked to " << address << std::endl;
   }
 }
 
