@@ -33,14 +33,24 @@
   /* Helper functions to get dereferenced symbols */
   SymbolRef
     getScalarBinaryOperand(mm_translator & ,
-			   yy::mm_parser& ,
-			   const yy::location& ,
+			   yy::mm_parser & ,
+			   const yy::location & ,
 			   Expression & );
   SymbolRef
     getIntegerBinaryOperand(mm_translator & ,
-			    yy::mm_parser& ,
-			    const yy::location& ,
+			    yy::mm_parser & ,
+			    const yy::location & ,
 			    Expression & );
+
+  /* Checks if the given symbol has type equal to given type on not.
+     If not, then converts / throws accordingly. */
+  SymbolRef typeCheck(SymbolRef, // symbol
+		      DataType &,// type
+		      bool, // convert?
+		      mm_translator &,
+		      yy::mm_parser &,
+		      const yy::location & );
+
  }
 
 /* Enable bison location tracking */
@@ -540,13 +550,14 @@ multiplicative_expression mul_div_op cast_expression { // mul_div_op produces `*
   if( retType == MM_VOID_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
+  LHR = typeCheck(LHR,retType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,retType,true,translator,*this,@3);
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  if( $2 == '*' )
-    translator.emit(Taco(OP_MULT,retSymbol.id,LHS.id,RHS.id));
-  else
-    translator.emit(Taco(OP_DIV,retSymbol.id,LHS.id,RHS.id));
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  if( $2 == '*' ) translator.emit(Taco(OP_MULT,retSymbol.id,CLHS.id,CRHS.id));
+  else translator.emit(Taco(OP_DIV,retSymbol.id,CLHS.id,CRHS.id));
   $$.symbol = retRef;
 
 }
@@ -561,10 +572,13 @@ multiplicative_expression "%" cast_expression {
   if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
+  LHR = typeCheck(LHR,retType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,retType,true,translator,*this,@3);
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_MOD,retSymbol.id,LHS.id,RHS.id));
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  translator.emit(Taco(OP_MOD,retSymbol.id,CLHS.id,CRHS.id));
   $$.symbol = retRef;
 
 }
@@ -591,13 +605,14 @@ additive_expression add_sub_op multiplicative_expression { // add_sub op produce
   if( retType == MM_VOID_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
+  LHR = typeCheck(LHR,retType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,retType,true,translator,*this,@3);
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  if( $2 == '+' )
-    translator.emit(Taco(OP_PLUS,retSymbol.id,LHS.id,RHS.id));
-  else
-    translator.emit(Taco(OP_MINUS,retSymbol.id,LHS.id,RHS.id));
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  if( $2 == '+' ) translator.emit(Taco(OP_PLUS,retSymbol.id,CLHS.id,CRHS.id));
+  else translator.emit(Taco(OP_MINUS,retSymbol.id,CLHS.id,CRHS.id));
   $$.symbol = retRef;
 
 }
@@ -622,13 +637,14 @@ shift_expression bit_shift_op additive_expression { // bit_shift_op produces `<<
   if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
+  LHR = typeCheck(LHR,retType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,retType,true,translator,*this,@3);
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  if ( $2 == '<' )
-    translator.emit(Taco(OP_SHL,retSymbol.id,LHS.id,RHS.id));
-  else
-    translator.emit(Taco(OP_SHR,retSymbol.id,LHS.id,RHS.id));
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  if ( $2 == '<' ) translator.emit(Taco(OP_SHL,retSymbol.id,CLHS.id,CRHS.id));
+  else translator.emit(Taco(OP_SHR,retSymbol.id,CLHS.id,CRHS.id));
   $$.symbol = retRef;
 
 }
@@ -649,17 +665,24 @@ relational_expression rel_op shift_expression {// rel_op produces one of `<' `<=
   RHR = getScalarBinaryOperand(translator,*this,@$,$3); // get rhs
   Symbol & LHS = translator.getSymbol(LHR);
   Symbol & RHS = translator.getSymbol(RHR);
-  // TACos for conversion from one basic type to another ?
+  DataType commonType = mm_translator::maxType(LHS.type,RHS.type);
+  if( commonType != MM_CHAR_TYPE and commonType != MM_INT_TYPE and commonType != MM_DOUBLE_TYPE ) {
+    throw syntax_error(@$ , "Invalid operands." );
+  }
+  LHR = typeCheck(LHR,commonType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,commonType,true,translator,*this,@3);
   DataType retType = MM_BOOL_TYPE;
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
   $$.symbol = retRef;
   $$.trueList.push_back(translator.nextInstruction());
   switch( $2 ){
-  case '<': translator.emit(Taco(OP_LT,"",LHS.id,RHS.id)); break;
-  case '>': translator.emit(Taco(OP_GT,"",LHS.id,RHS.id)); break;
-  case '(': translator.emit(Taco(OP_LTE,"",LHS.id,RHS.id)); break;
-  case ')': translator.emit(Taco(OP_GTE,"",LHS.id,RHS.id)); break;
+  case '<': translator.emit(Taco(OP_LT,"",CLHS.id,CRHS.id)); break;
+  case '>': translator.emit(Taco(OP_GT,"",CLHS.id,CRHS.id)); break;
+  case '(': translator.emit(Taco(OP_LTE,"",CLHS.id,CRHS.id)); break;
+  case ')': translator.emit(Taco(OP_GTE,"",CLHS.id,CRHS.id)); break;
   default : throw syntax_error(@$,"Unknown relational operator.");
   }
   $$.falseList.push_back(translator.nextInstruction());
@@ -683,15 +706,22 @@ equality_expression eq_op relational_expression { // eq_op produces `==' or `!='
   RHR = getScalarBinaryOperand(translator,*this,@$,$3); // get rhs
   Symbol & LHS = translator.getSymbol(LHR);
   Symbol & RHS = translator.getSymbol(RHR);
-  // TACos for conversion from one basic type to another ?
+  DataType commonType = mm_translator::maxType(LHS.type,RHS.type);
+  if( commonType != MM_CHAR_TYPE and commonType != MM_INT_TYPE and commonType != MM_DOUBLE_TYPE ) {
+    throw syntax_error(@$ , "Invalid operands." );
+  }
+  LHR = typeCheck(LHR,commonType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,commonType,true,translator,*this,@3);
   DataType retType = MM_BOOL_TYPE;
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
   $$.symbol = retRef;
   $$.trueList.push_back(translator.nextInstruction());
   switch( $2 ){
-  case '=': translator.emit(Taco(OP_EQ,"",LHS.id,RHS.id)); break;
-  case '!': translator.emit(Taco(OP_NEQ,"",LHS.id,RHS.id)); break;
+  case '=': translator.emit(Taco(OP_EQ,"",CLHS.id,CRHS.id)); break;
+  case '!': translator.emit(Taco(OP_NEQ,"",CLHS.id,CRHS.id)); break;
   default : throw syntax_error(@$,"Unknown relational operator.");
   }
   $$.falseList.push_back(translator.nextInstruction());
@@ -719,10 +749,13 @@ AND_expression "&" equality_expression {
   if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
+  LHR = typeCheck(LHR,retType,true,translator,*this,@1);
+  RHR = typeCheck(RHR,retType,true,translator,*this,@3);
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_BIT_AND,retSymbol.id,LHS.id,RHS.id));// z = l & r
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  translator.emit(Taco(OP_BIT_AND,retSymbol.id,CLHS.id,CRHS.id));// z = l & r
   $$.symbol = retRef;
 
 }
@@ -744,10 +777,11 @@ XOR_expression "^" AND_expression {
   if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_BIT_XOR,retSymbol.id,LHS.id,RHS.id));// z = l ^ r
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  translator.emit(Taco(OP_BIT_XOR,retSymbol.id,CLHS.id,CRHS.id));// z = l ^ r
   $$.symbol = retRef;
 
 }
@@ -769,12 +803,13 @@ OR_expression "|" XOR_expression {
   if( retType != MM_CHAR_TYPE and retType != MM_INT_TYPE ) {
     throw syntax_error(@$ , "Invalid operands." );
   }
-  // TACos for conversion from one basic type to another ?
   SymbolRef retRef = translator.genTemp(retType);
   Symbol & retSymbol = translator.getSymbol(retRef);
-  translator.emit(Taco(OP_BIT_OR,retSymbol.id,LHS.id,RHS.id));// z = l | r
+  Symbol & CLHS = translator.getSymbol(LHR);
+  Symbol & CRHS = translator.getSymbol(RHR);
+  translator.emit(Taco(OP_BIT_OR,retSymbol.id,CLHS.id,CRHS.id));// z = l | r
   $$.symbol = retRef;
-  
+
 }
 ;
 
@@ -859,8 +894,7 @@ conditional_expression {
 }
 |
 unary_expression "=" assignment_expression {
-  /* TODO : possibly emit type conversions TACos */
-  /* TODO : support matrix assignment and +/-/* operators */
+  /* TODO : support matrix assignment */
   Symbol & lSym = translator.getSymbol($1.symbol);
   Symbol & rSym = translator.getSymbol($3.symbol);
  
@@ -874,27 +908,32 @@ unary_expression "=" assignment_expression {
       }else if( elementType == MM_CHAR_TYPE or elementType == MM_INT_TYPE
 		or elementType == MM_DOUBLE_TYPE ) {
 	SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
-	Symbol & RHS = translator.getSymbol(RHR);
-	translator.emit(Taco(OP_L_DEREF,lSym.id,RHS.id)); // *z = temp
+	Symbol & LHS = translator.getSymbol($1.symbol);
+	RHR = typeCheck(RHR,elementType,true,translator,*this,@3);
+	Symbol & CRHS = translator.getSymbol(RHR);
+	Symbol & CLHS = translator.getSymbol($1.symbol);
+	translator.emit(Taco(OP_L_DEREF,CLHS.id,CRHS.id)); // *z = temp
       } else {
 	throw syntax_error( @1 , "Invalid operand." );
       }
     } else if( lSym.type.isProperMatrix() ) { // matrix element
-      // getScalarBinaryOperand(rhs) : convert to double?
       SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
       Symbol & RHS = translator.getSymbol(RHR);
       if( RHS.type != MM_DOUBLE_TYPE ) {
-	throw syntax_error(@3, "Internal type conversion yet to be implemented.");
+	DataType doubleType = MM_DOUBLE_TYPE;
+	RHR = typeCheck(RHR,doubleType,true,translator,*this,@3);
       }
       Symbol & auxSym = translator.getSymbol($1.auxSymbol);
-      translator.emit(Taco(OP_LXC,lSym.id,auxSym.id,RHS.id));
+      Symbol & CLHS = translator.getSymbol($1.symbol);
+      Symbol & CRHS = translator.getSymbol(RHR);
+      translator.emit(Taco(OP_LXC,CLHS.id,auxSym.id,CRHS.id));
     } else {
       throw syntax_error(@1,"Invalid operand.");
     }
   } else if ( translator.isTemporary($1.symbol) ) { // rvalue
-    throw syntax_error(@1,"Invalid operand. LHS cannot be unknown.");
+    throw syntax_error(@1,"Invalid operand. LHS cannot be a temporary.");
   } else { // valid lvalue
-    if( lSym.type.isPointer() ) { // 
+    if( lSym.type.isPointer() ) {
       if( lSym.type.rows != 0 or lSym.type.cols == 0 ) {// M(p,q)* or M*
 	if( rSym.type.rows == 0 or rSym.type.cols == 0 or rSym.type.pointers!=lSym.type.pointers ) {
 	  // rhs is not an equivalent pointer to matrix
@@ -910,11 +949,13 @@ unary_expression "=" assignment_expression {
     } else if( lSym.type == MM_CHAR_TYPE or lSym.type == MM_INT_TYPE or lSym.type == MM_DOUBLE_TYPE ) {
       SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
       Symbol & RHS = translator.getSymbol(RHR);
-      if( lSym.type != RHS.type ) {
-	// TACos for conversion from one basic type to another ?
-	throw syntax_error(@3, "Internal type conversion yet to be implemented.");
+      Symbol & LHS = translator.getSymbol($1.symbol);
+      if( LHS.type != RHS.type ) {
+	RHR = typeCheck(RHR,LHS.type,true,translator,*this,@3);
       }
-      translator.emit(Taco(OP_COPY,lSym.id,RHS.id)); // copy value
+      Symbol & CRHS = translator.getSymbol(RHR);
+      Symbol & CLHS = translator.getSymbol($1.symbol);
+      translator.emit(Taco(OP_COPY,CLHS.id,CRHS.id)); // copy value
     }
   }
 
@@ -1144,8 +1185,7 @@ compound_statement :
   unsigned int newEnv = translator.newEnvironment("");
   SymbolRef ref = translator.genTemp( oldEnv, voidPointer );
   Symbol & temp = translator.getSymbol(ref);
-  translator.currentTable().name = temp.id;
-  // TODO : initialize it to this instruction count
+  translator.currentTable().name = temp.id; // What TODO with this?
   temp.child = newEnv;
   SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
@@ -1347,4 +1387,27 @@ getIntegerBinaryOperand(mm_translator & translator,
     parser.error(loc , "Invalid operand.");
   }
   return ret;
+}
+
+SymbolRef typeCheck(SymbolRef ref,
+		    DataType & type,
+		    bool convert,
+		    mm_translator & translator,
+		    yy::mm_parser & parser,
+		    const yy::location & loc) {
+  Symbol & symbol = translator.getSymbol( ref );
+  if( symbol.type != type ) {
+    if( convert ) {
+      SymbolRef ret = translator.genTemp(type);
+      Symbol & retSymbol = translator.getSymbol(ret);
+      Symbol & rhs = translator.getSymbol( ref );
+      if( type == MM_CHAR_TYPE ) translator.emit(Taco(OP_CONV_TO_CHAR,retSymbol.id,rhs.id));
+      if( type == MM_INT_TYPE ) translator.emit(Taco(OP_CONV_TO_INT,retSymbol.id,rhs.id));
+      if( type == MM_DOUBLE_TYPE ) translator.emit(Taco(OP_CONV_TO_DOUBLE,retSymbol.id,rhs.id));
+      return ret;
+    } else {
+      parser.error(loc , "Cannot convert into requested type.");
+    }
+  }
+  return ref;
 }
