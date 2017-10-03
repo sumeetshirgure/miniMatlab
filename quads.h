@@ -50,6 +50,10 @@ enum OpCode {
   OP_R_DEREF,  // z = *x
   OP_LXC,       // left indexed copy : a[b] = c
   OP_RXC,       // a = b[c]
+  
+  OP_CONV_TO_CHAR  , // z = (char) x
+  OP_CONV_TO_INT   , // z = (int) x
+  OP_CONV_TO_DOUBLE, // z = (double) x
 };
 
 // Saw the opportunity and took it.

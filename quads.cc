@@ -42,6 +42,10 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
 
   case OP_LXC:return out<<taco.z<<" [ "<<taco.x<<" ] = "<<taco.y;
   case OP_RXC:return out<<taco.z<<" = "<<taco.x<<" [ "<<taco.y<<" ]";
+
+  case OP_CONV_TO_CHAR : return out<<taco.z<<" = toChar("<<taco.x<<")";
+  case OP_CONV_TO_INT : return out<<taco.z<<" = toInt("<<taco.x<<")";
+  case OP_CONV_TO_DOUBLE : return out<<taco.z<<" = toDouble("<<taco.x<<")";
   default : break;
   }
   return out;
