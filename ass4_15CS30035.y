@@ -340,10 +340,8 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
     SymbolRef tempRef = translator.genTemp(type);
     Symbol & temp = translator.getSymbol(tempRef);
     translator.emit(Taco(OP_COPY,temp.id,lSym.id));
-    if( $2 == '+' )
-      translator.emit(Taco(OP_PLUS,lSym.id,lSym.id,"1"));
-    else
-      translator.emit(Taco(OP_MINUS,lSym.id,lSym.id,"1"));
+    if( $2 == '+' ) translator.emit(Taco(OP_PLUS,lSym.id,lSym.id,"1"));
+    else translator.emit(Taco(OP_MINUS,lSym.id,lSym.id,"1"));
     $$.symbol = tempRef;
   } else if( lSym.type.isPointer() ) {
     /* TODO : support pointer arithmetic */
@@ -813,7 +811,6 @@ OR_expression "|" XOR_expression {
 }
 ;
 
-
 %type <unsigned int> instruction_mark;
 instruction_mark : %empty { $$ = translator.nextInstruction(); } ;
 
@@ -1012,7 +1009,7 @@ declarator :
 optional_pointer direct_declarator {
   $$ = $2;
   Symbol & symbol = translator.getSymbol($$);
-  
+  /* If it is a function declaration let it pass. */
   if( symbol.type.isMalformedType() ) {
     throw syntax_error( @$ , "Invalid type for declaration" );
   }
@@ -1093,13 +1090,13 @@ direct_declarator "[" expression "]" {
     
     // store expression value in m[0]
     /* TODO : Evaluate the given expression */
-    curSymbol.type.rows = 3; // expression value : must be initialised
+    curSymbol.type.rows = 4;// expression value : must be initialised
     
   } else if( curSymbol.type.rows != 0 and curSymbol.type.cols == 0 ) {
     
     // store expression value in m[4]
     /* TODO : Evaluate the given expression */
-    curSymbol.type.cols = 4;
+    curSymbol.type.cols = 3;
     
   } else {
     throw syntax_error( @$ , "Incompatible type for matrix declaration" );
@@ -1198,22 +1195,22 @@ compound_statement :
 %type <AddressList> optional_block_item_list;
 optional_block_item_list :
 %empty { } |
-block_item_list { std::swap($$,$1); } ; // merge lists
+block_item_list { std::swap($$,$1); } ;
 
 %type <AddressList> block_item_list;
-block_item_list : block_item { std::swap($$,$1); } |
+block_item_list : block_item {
+  translator.patchBack($1,translator.nextInstruction());
+} |
 block_item_list instruction_mark block_item {
   translator.patchBack($1,$2);
   std::swap($$,$3);
 }
 
-
 %type <AddressList> block_item;
-block_item : declaration { } | statement { std::swap($$ , $1); } ;
+block_item : declaration { } | statement { std::swap($$,$1); } ;
 
 expression_statement :
-optional_expression ";" {
-  // patch back all instructions
+optional_expression ";" { // patch back all jumps to the next instruction
   translator.patchBack($1.trueList,translator.nextInstruction());
   translator.patchBack($1.falseList,translator.nextInstruction());
 } ;
@@ -1222,33 +1219,74 @@ optional_expression ";" {
 %type <AddressList> selection_statement;
 selection_statement :
 "if" "(" expression ")" instruction_mark statement {
-  /*
   Symbol & boolExp = translator.getSymbol($3.symbol);
   if( boolExp.type != MM_BOOL_TYPE ) {
     throw syntax_error(@3,"Not a boolean expression.");
   }
   translator.patchBack($3.trueList,$5);
   std::swap($$,$3.falseList);
-  $$.splice($$.end(),$6);*/
+  $$.splice($$.end(),$6);
 }
 |
-"if" "(" expression ")" instruction_mark statement "else" instruction_mark statement {
-  
+"if" "(" expression ")" instruction_mark statement "else" insert_jump statement {
+  Symbol & boolExp = translator.getSymbol($3.symbol);
+  if( boolExp.type != MM_BOOL_TYPE ) {
+    throw syntax_error(@3,"Not a boolean expression.");
+  }
+  translator.patchBack($3.trueList,$5);
+  translator.patchBack($3.falseList,$8);
+  std::swap($$,$6);$$.push_back($8-1);
+  $$.splice($$.end(),$9);
 }
 ;
 
 %type <AddressList> iteration_statement;
 iteration_statement :
-"while" "(" expression ")" statement {
+"while" "(" instruction_mark expression ")" instruction_mark statement {
+  Symbol & boolExp = translator.getSymbol($4.symbol);
+  if( boolExp.type != MM_BOOL_TYPE ) {
+    throw syntax_error(@4,"Not a boolean expression.");
+  }
+  unsigned int loopInstruction = translator.nextInstruction();
+  translator.emit(Taco(OP_GOTO));
+  translator.patchBack(loopInstruction,$3); // primary loop
+  translator.patchBack($7,$3); // shortcut loop
+  translator.patchBack($4.trueList,$6); // iterate
+  std::swap($$,$4.falseList); // terminate
+}
+|
+"do" instruction_mark statement "while" "(" instruction_mark expression ")" ";" {
+  Symbol & boolExp = translator.getSymbol($7.symbol);
+  if( boolExp.type != MM_BOOL_TYPE ) {
+    throw syntax_error(@7,"Not a boolean expression.");
+  }
+  translator.patchBack($7.trueList,$2); // primary loop
+  translator.patchBack($3,$6);
+  std::swap($$,$7.falseList); // terminate
+}
+|
+"for" "("
+optional_expression ";"              // initializer expression
+instruction_mark expression ";"      // nonempty invariant expression
+instruction_mark optional_expression // variant expression
+")" instruction_mark statement {
+  Symbol & boolExp = translator.getSymbol($6.symbol);
+  if( boolExp.type != MM_BOOL_TYPE ) {
+    throw syntax_error(@6,"Not a boolean expression.");
+  }
+  unsigned int loopInstruction = translator.nextInstruction();
+  translator.patchBack(loopInstruction,$5); // primary loop
+  translator.patchBack($12,$5); // shortcut loop
+  
+  translator.patchBack($3.trueList,$5); //
+  translator.patchBack($3.falseList,$5); // link totally
+  
+  translator.patchBack($6.trueList,$8); // iterate
 
-}
-|
-"do" statement "while" "(" expression ")" ";" {
+  translator.patchBack($9.trueList,$11); //
+  translator.patchBack($9.falseList,$11); // link totally
   
-}
-|
-"for""("optional_expression";"optional_expression";"optional_expression")"statement {
-  
+  std::swap($$,$6.falseList); // terminate
 }
 /* Declaration inside for is not supported */
 ;
@@ -1261,9 +1299,8 @@ jump_statement :
 ;
 
 %type <Expression> optional_expression;
-optional_expression :
-%empty { } | expression { std::swap($$,$1); }
-;
+optional_expression : %empty { } | expression { std::swap($$,$1); } ;
+
 /**********************************************************************/
 
 
@@ -1297,6 +1334,7 @@ type_specifier function_declarator "{" {
   translator.environment.push(functionScope);
   translator.emit(Taco(OP_FUNC_START,translator.currentTable().name));
 } optional_block_item_list "}" {
+  translator.patchBack($5,translator.nextInstruction());
   translator.emit(Taco(OP_FUNC_END,translator.currentTable().name));
   translator.environment.pop();
   translator.typeContext.pop(); // corresponding to the type_specifier

@@ -54,7 +54,9 @@ void mm_translator::error (const std::string &msg) {
 }
 
 void mm_translator::emit (const Taco & taco) {
-  if(trace_tacos) std::cerr << "Emitted :\t" << taco << std::endl;
+  if(trace_tacos) {
+    std::cerr << "Emitted (" << quadArray.size() << ") :\t" << taco << std::endl;
+  }
   quadArray.emplace_back( taco );
 }
 
