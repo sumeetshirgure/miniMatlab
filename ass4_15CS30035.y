@@ -327,6 +327,18 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
 	translator.emit(Taco(OP_COPY,ret.id,LHS.id));// value before incrementation / decrementation
 	if( $2 == '+' ) translator.emit(Taco(OP_PLUS,LHS.id,LHS.id,"1"));
 	else translator.emit(Taco(OP_MINUS,LHS.id,LHS.id,"1"));
+	if( LHS.isInitialized ) {
+	  ret.isInitialized = true;
+	  if( $2 == '+' ) {
+	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = LHS.value.charVal ++;
+	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = LHS.value.intVal ++;
+	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = LHS.value.doubleVal ++;
+	  } else {
+	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = LHS.value.charVal --;
+	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = LHS.value.intVal --;
+	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = LHS.value.doubleVal --;
+	  }
+	}
 	$$.symbol = retRef;
       } else if( baseType.isPointer() ) {
 	DataType elementType = baseType; elementType.pointers--;
@@ -409,6 +421,18 @@ inc_dec_op unary_expression { // prefix increment operator
 	if( $1 == '+' ) translator.emit(Taco(OP_PLUS,ret.id,RHS.id,"1"));
 	else translator.emit(Taco(OP_MINUS,ret.id,RHS.id,"1"));
 	translator.emit(Taco(OP_COPY,RHS.id,ret.id));// value after incrementation / decrementation
+	if( RHS.isInitialized ) {
+	  ret.isInitialized = true;
+	  if( $1 == '+' ) {
+	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = ++ RHS.value.charVal;
+	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = ++ RHS.value.intVal;
+	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = ++ RHS.value.doubleVal;
+	  } else {
+	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = -- RHS.value.charVal;
+	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = -- RHS.value.intVal;
+	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = -- RHS.value.doubleVal;
+	  }
+	}
 	$$.symbol = retRef;
       } else if( baseType.isPointer() ) {
 	DataType elementType = baseType; elementType.pointers--;
@@ -513,11 +537,19 @@ unary_operator unary_expression {
   case '+' : {
     if( $$.isReference ) {
       if( translator.isSimpleReference($$) ) {
+	if( rType.isMatrix() ) {// Dynoge
+	  throw syntax_error(@$,"Matrix operations not supported yet.");
+	}
 	SymbolRef retRef = translator.genTemp(rType);
 	Symbol & retSymbol = translator.getSymbol(retRef);
 	Symbol & RHS = translator.getSymbol($$.symbol);
-	// Dynoge
-	translator.emit(Taco(OP_COPY,retSymbol.id,RHS.id));//copies entire matrices
+	translator.emit(Taco(OP_COPY,retSymbol.id,RHS.id));
+	if( RHS.isInitialized ) {
+	  retSymbol.isInitialized = true;
+	  if( rType == MM_CHAR_TYPE ) retSymbol.value.charVal = RHS.value.charVal;
+	  else if( rType == MM_INT_TYPE ) retSymbol.value.intVal = RHS.value.intVal;
+	  else if( rType == MM_DOUBLE_TYPE ) retSymbol.value.doubleVal = RHS.value.doubleVal;
+	}
 	$$.symbol = retRef;
       } else if( translator.isMatrixReference($$) ) {
 	DataType elementType = MM_DOUBLE_TYPE;
@@ -538,11 +570,19 @@ unary_operator unary_expression {
   case '-' : {
     if( $$.isReference ) {
       if( translator.isSimpleReference($$) ) {
+	if( rType.isMatrix() ) {// Dynoge
+	  throw syntax_error(@$,"Matrix operations not supported yet.");
+	}
 	SymbolRef retRef = translator.genTemp(rType);
 	Symbol & retSymbol = translator.getSymbol(retRef);
 	Symbol & RHS = translator.getSymbol($$.symbol);
-	// Dynoge
-	translator.emit(Taco(OP_UMINUS,retSymbol.id,RHS.id));//copy-negates entire matrices
+	if( RHS.isInitialized ) {
+	  retSymbol.isInitialized = true;
+	  if( rType == MM_CHAR_TYPE ) retSymbol.value.charVal = -RHS.value.charVal;
+	  else if( rType == MM_INT_TYPE ) retSymbol.value.intVal = -RHS.value.intVal;
+	  else if( rType == MM_DOUBLE_TYPE ) retSymbol.value.doubleVal = -RHS.value.doubleVal;
+	}
+	translator.emit(Taco(OP_UMINUS,retSymbol.id,RHS.id));
 	$$.symbol = retRef;
       } else if( translator.isMatrixReference($$) ) {
 	DataType elementType = MM_DOUBLE_TYPE;
@@ -552,7 +592,8 @@ unary_operator unary_expression {
 	Symbol & RHS = translator.getSymbol($$.symbol);
 	translator.emit(Taco(OP_RXC,retSymbol.id,RHS.id,auxSymbol.id));// ret = m[off]
 	$$.symbol = retRef;
-      } else if( translator.isPointerReference($$) ) {//for pointer reference, just lower flag
+      } else if( translator.isPointerReference($$) ) {
+	throw syntax_error(@$ , "Unary minus on pointer not allowed." );
       } else {
 	throw syntax_error(@2,"Invalid operand.");
       }
@@ -562,17 +603,25 @@ unary_operator unary_expression {
     } else if( rType.isPointer() ) {
       throw syntax_error(@$ , "Unary minus on pointer not allowed." );
     } else {
+      if( rType.isMatrix() ) {// Dynoge
+	throw syntax_error(@$,"Matrix operations not supported yet.");
+      }
       SymbolRef retRef = translator.genTemp(rType);
       Symbol & retSymbol = translator.getSymbol(retRef);
       Symbol & RHS = translator.getSymbol($$.symbol);
-      // Dynoge
       translator.emit(Taco(OP_UMINUS,retSymbol.id,RHS.id));//
+      if( RHS.isInitialized ) {
+	retSymbol.isInitialized = true;
+	if( rType == MM_CHAR_TYPE ) retSymbol.value.charVal = -RHS.value.charVal;
+	else if( rType == MM_INT_TYPE ) retSymbol.value.intVal = -RHS.value.intVal;
+	else if( rType == MM_DOUBLE_TYPE ) retSymbol.value.doubleVal = -RHS.value.doubleVal;
+      }
       $$.symbol = retRef;
     }
   } break;
   default: throw syntax_error(@$ , "Unknown unary operator.");
   }
-  
+  /* TODO : support logical not `!' and bitwise not `~' */
 } ;
 
 %type <char> unary_operator;
@@ -680,7 +729,6 @@ insert_jump : %empty {
   $$ = translator.nextInstruction();
 } ;
 
-/* Cannot nest question statements */
 %type <Expression> conditional_expression;
 conditional_expression :
 logical_OR_expression {
@@ -717,13 +765,19 @@ unary_expression "=" assignment_expression {
 	Symbol & CRHS = translator.getSymbol(RHR);
 	Symbol & CLHS = translator.getSymbol($$.symbol);
 	translator.emit(Taco(OP_COPY,CLHS.id,CRHS.id));// LHS = RHS
+	CLHS.isInitialized = CRHS.isInitialized;
+	if( CLHS.isInitialized ){
+	  if( lType == MM_CHAR_TYPE ) CLHS.value.charVal = CRHS.value.charVal;
+	  else if( lType == MM_INT_TYPE ) CLHS.value.intVal = CRHS.value.intVal;
+	  else if( lType == MM_DOUBLE_TYPE ) CLHS.value.doubleVal = CRHS.value.doubleVal;
+	}
       } else if( lType.isPointer() ) {
 	Symbol & RHS = translator.getSymbol($3.symbol);
 	if( RHS.type == lType ) {
 	  Symbol & auxSym = translator.getSymbol($$.auxSymbol);
-	  translator.emit(Taco(OP_L_DEREF,auxSym.id,RHS.id));
+	  translator.emit(Taco(OP_COPY,auxSym.id,RHS.id));// LHS = RHS
 	} else {
-	  throw syntax_error(@$,"Operand mismatch.");
+	  throw syntax_error(@$,"Operand type mismatch.");
 	}
       } else {
 	throw syntax_error(@1,"Invalid operand.");
@@ -747,7 +801,7 @@ unary_expression "=" assignment_expression {
 	  Symbol & auxSym = translator.getSymbol($$.auxSymbol);
 	  translator.emit(Taco(OP_L_DEREF,auxSym.id,RHS.id));
 	} else {
-	  throw syntax_error(@$,"Operand mismatch.");
+	  throw syntax_error(@$,"Operand type mismatch.");
 	}
       } else if( lType == MM_CHAR_TYPE or lType == MM_INT_TYPE or lType == MM_DOUBLE_TYPE ) {
 	SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
@@ -797,10 +851,59 @@ initialized_declarator_list :
 initialized_declarator | initialized_declarator_list "," initialized_declarator ;
 
 initialized_declarator :
-declarator { } | declarator "=" initializer {
-  /*TODO : maintain initial values over expression symbols */
-  // check types and optionally initalize expression */
-} ;
+declarator { } |
+declarator "=" expression {
+  Symbol & defSym = translator.getSymbol($1);
+  if( defSym.type.isMatrix() ) {
+    throw syntax_error(@3,"Matrix operations not supported yet.");
+    if( defSym.type.isStaticMatrix() ) {//
+    } else {// Dynoge
+    }
+  } else if( defSym.type.isPointer() ) {
+    Symbol & rSym = translator.getSymbol($3.symbol);
+    if( rSym.type == defSym.type ) {
+      translator.emit(Taco(OP_COPY,defSym.id,rSym.id));
+    } else {
+      throw syntax_error(@$,"Operand type mismatch.");
+    }
+  } else if( defSym.type == MM_CHAR_TYPE or defSym.type == MM_INT_TYPE or defSym.type == MM_DOUBLE_TYPE) {
+    SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
+    Symbol & RHS = translator.getSymbol(RHR);
+    if( RHS.type != defSym.type ) { // convert
+      RHR = typeCheck(RHR,defSym.type,true,translator,*this,@3);
+    }
+    Symbol & CRHS = translator.getSymbol(RHR);
+    Symbol & LHS = translator.getSymbol($1);
+    translator.emit(Taco(OP_COPY,LHS.id,CRHS.id));// LHS = CRHS
+    LHS.isInitialized = CRHS.isInitialized;
+    if( LHS.isInitialized ){
+      if( defSym.type == MM_CHAR_TYPE ) LHS.value.charVal = CRHS.value.charVal;
+      else if( defSym.type == MM_INT_TYPE ) LHS.value.intVal = CRHS.value.intVal;
+      else if( defSym.type == MM_DOUBLE_TYPE ) LHS.value.doubleVal = CRHS.value.doubleVal;
+    }
+  } else {
+    throw syntax_error(@$,"Syntax error.");
+  }
+  
+} |
+declarator "=" "{" initializer_row_list "}" { // for static matrices
+  Symbol & matSym = translator.getSymbol($1);
+  if( matSym.type.isStaticMatrix() ) {
+    //initializers are always non-empty ... so $4[0] will never throw runtime error
+    if( matSym.type.rows != $4.size() or matSym.type.cols != $4[0].size() ) {
+      throw syntax_error(@4,"Size mismatch. Matrix dimensions don't match initializer.");
+    }
+    int offset = 2 * SIZE_OF_INT; // initial offset
+    for( int row = 0 ; row < matSym.type.rows ; row++ ) {
+      for( int col = 0 ; col < matSym.type.cols ; col++ , offset += SIZE_OF_DOUBLE ) {
+	Symbol & elemSym = translator.getSymbol($4[row][col]);
+	translator.emit(Taco(OP_LXC,matSym.id,std::to_string(offset),elemSym.id));
+      }
+    }// copy all elements
+  } else {
+    throw syntax_error(@4,"Cannot statically initialize non-static matrices.");
+  }
+};
 
 %type < SymbolRef > declarator;
 declarator :
@@ -837,6 +940,8 @@ IDENTIFIER {
     SymbolTable & table = translator.currentTable();
     if(translator.parameterDeclaration) {
       $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::PARAM));
+    } else if( curType == MM_MATRIX_TYPE ) {
+      $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LINK)); //create a dyanamic link
     } else {
       $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));
     }
@@ -886,9 +991,7 @@ IDENTIFIER "(" {
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. Exactly two dimensions are needed. */
 IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be supported
-  
-  // TODO : based on the static values of expressions $3 and $6 , find out if matrix is static or dynamic
-  
+    
   DataType &  curType = translator.typeContext.top() ;
   if(curType != MM_MATRIX_TYPE) {
     throw syntax_error(@$,"Incompatible type for matrix declaration.");
@@ -901,12 +1004,54 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
   try {
     // create a new symbol in current scope
     SymbolTable & table = translator.currentTable();
-    $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));//
-    Symbol & curSymbol = translator.getSymbol($$);
-    curSymbol.type.rows = 4; // store expression value in m[0]
-    curSymbol.type.cols = 3; // store expression value in m[4]
-    /* TODO : Support dynamically linked matrices as well. */
+    $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));
     
+    SymbolRef rowRef = getIntegerBinaryOperand(translator,*this,@3,$3);
+    SymbolRef colRef = getIntegerBinaryOperand(translator,*this,@6,$6);
+    Symbol & curSymbol = translator.getSymbol($$);
+    Symbol & rowSym = translator.getSymbol(rowRef);
+    Symbol & colSym = translator.getSymbol(colRef);
+    
+    if( rowSym.isInitialized and colSym.isInitialized ) {
+      if( rowSym.type == MM_CHAR_TYPE ) {
+	if(rowSym.value.charVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+	curSymbol.type.rows = rowSym.value.charVal;
+      } else {
+	if(rowSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+	curSymbol.type.rows = rowSym.value.intVal;
+      }
+      if( colSym.type == MM_CHAR_TYPE ) {
+	if(colSym.value.charVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+	curSymbol.type.cols = colSym.value.charVal;
+      } else {
+	if(colSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+	curSymbol.type.cols = colSym.value.intVal;
+      }
+    } else {
+      curSymbol.symType = SymbolType::LINK;
+    }
+    
+    if(rowSym.type == MM_CHAR_TYPE) {
+      DataType intType = MM_INT_TYPE;
+      rowRef = typeCheck(rowRef,intType,true,translator,*this,@3);
+      Symbol & rowInt = translator.getSymbol(rowRef);
+      Symbol & matSymbol = translator.getSymbol($$);
+      translator.emit(Taco(OP_LXC,matSymbol.id,"0",rowInt.id));// m[0] = # of rows
+    } else {
+      translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
+    }
+    
+    if(colSym.type == MM_CHAR_TYPE) {
+      DataType intType = MM_INT_TYPE;
+      colRef = typeCheck(colRef,intType,true,translator,*this,@6);
+      Symbol & colInt = translator.getSymbol(colRef);
+      Symbol & matSymbol = translator.getSymbol($$);
+      translator.emit(Taco(OP_LXC,matSymbol.id,std::to_string(SIZE_OF_INT),colInt.id));//m[4] = # of cols
+    } else {
+      translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));//m[4] = # of cols
+    }
+  } catch ( syntax_error se ) {
+    throw se;
   } catch ( ... ) {/* Already declared in current scope */
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
   }
@@ -924,39 +1069,34 @@ parameter_list : parameter_declaration { $$ = 1; }
 parameter_declaration :
 type_specifier declarator { translator.typeContext.pop(); } ;
 
-%type <Expression> initializer;
-initializer :
-expression {
-  
-}
-|
-"{" initializer_row_list "}" {
-  
-}
-;
-
+%type <std::vector<std::vector<SymbolRef> > > initializer_row_list;
 initializer_row_list :
 initializer_row {
-  
-}
-|
+  $$.push_back($1);
+} |
 initializer_row_list ";" initializer_row {
-  
-}
-;
+  std::swap($$,$1);
+  if($$[0].size() != $3.size()) {
+    throw syntax_error(@$,"Size mismatch in initializer row.");
+  }
+  $$.push_back($3);
+} ;
 
+%type <std::vector<SymbolRef> > initializer_row;
 initializer_row :
 /* Nested brace initializers are not supported : { {2;3} ; 4 } 
    Hence the non-terminal initializer_row does not again produce initializer */
-/* TODO : If expression is not initialized , throw error */
 expression {
-
-}
-|
+  DataType elemType = MM_DOUBLE_TYPE;
+  SymbolRef E = typeCheck($1.symbol,elemType,true,translator,*this,@1);
+  $$.push_back( E );
+} |
 initializer_row "," expression {
-
-}
-;
+  std::swap($$,$1);
+  DataType elemType = MM_DOUBLE_TYPE;
+  SymbolRef E = typeCheck($3.symbol,elemType,true,translator,*this,@3);
+  $$.push_back( E );
+} ;
 
 /* 
    Also, non-trivial designated initializers not supported.
@@ -1159,8 +1299,8 @@ optional_pointer direct_declarator {
   if( symbol.type != MM_FUNC_TYPE ) {
     throw syntax_error( @$ , " Improper function definition : parameter list not found." );
   }
-}
-;
+} ;
+
 /**********************************************************************/
 
 %%
@@ -1248,15 +1388,41 @@ SymbolRef typeCheck(SymbolRef ref,
 		    yy::mm_parser & parser,
 		    const yy::location & loc
 		    ) {
-  Symbol & symbol = translator.getSymbol( ref );
-  if( symbol.type != type ) {
+  DataType baseType = translator.getSymbol( ref ).type;
+  if( baseType != type ) {
     if( convert ) {
       SymbolRef ret = translator.genTemp(type);
       Symbol & retSymbol = translator.getSymbol(ret);
       Symbol & rhs = translator.getSymbol( ref );
-      if( type == MM_CHAR_TYPE ) translator.emit(Taco(OP_CONV_TO_CHAR,retSymbol.id,rhs.id));
-      if( type == MM_INT_TYPE ) translator.emit(Taco(OP_CONV_TO_INT,retSymbol.id,rhs.id));
-      if( type == MM_DOUBLE_TYPE ) translator.emit(Taco(OP_CONV_TO_DOUBLE,retSymbol.id,rhs.id));
+      retSymbol.isInitialized = rhs.isInitialized;
+      if( type == MM_CHAR_TYPE ) {
+	translator.emit(Taco(OP_CONV_TO_CHAR,retSymbol.id,rhs.id));
+	if( rhs.type == MM_CHAR_TYPE ) {
+	  retSymbol.value.charVal = rhs.value.charVal;
+	} else if( rhs.type == MM_INT_TYPE ) {
+	  retSymbol.value.charVal = (char)rhs.value.intVal;
+	} else if( rhs.type == MM_DOUBLE_TYPE ) {
+	  retSymbol.value.charVal = (char)rhs.value.doubleVal;
+	}
+      } else if( type == MM_INT_TYPE ) {
+	translator.emit(Taco(OP_CONV_TO_INT,retSymbol.id,rhs.id));
+	if( rhs.type == MM_CHAR_TYPE ) {
+	  retSymbol.value.intVal = (int)rhs.value.charVal;
+	} else if( rhs.type == MM_INT_TYPE ) {
+	  retSymbol.value.intVal = rhs.value.intVal;
+	} else if( rhs.type == MM_DOUBLE_TYPE ) {
+	  retSymbol.value.intVal = (int)rhs.value.doubleVal;
+	}
+      } else if( type == MM_DOUBLE_TYPE ) {
+	translator.emit(Taco(OP_CONV_TO_DOUBLE,retSymbol.id,rhs.id));
+	if( rhs.type == MM_CHAR_TYPE ) {
+	  retSymbol.value.doubleVal = (double)rhs.value.charVal;
+	} else if( rhs.type == MM_INT_TYPE ) {
+	  retSymbol.value.doubleVal = (double)rhs.value.intVal;
+	} else if( rhs.type == MM_DOUBLE_TYPE ) {
+	  retSymbol.value.doubleVal = rhs.value.doubleVal;
+	}
+      }
       return ret;
     } else {
       parser.error(loc , "Cannot convert into requested type.");
@@ -1290,10 +1456,51 @@ void emitScalarBinaryOperation(char opChar ,
   Symbol & retSymbol = translator.getSymbol(retRef);
   Symbol & CLHS = translator.getSymbol(LHR);
   Symbol & CRHS = translator.getSymbol(RHR);
+
+  retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
+  
   if( opChar == '*' ) translator.emit(Taco(OP_MULT,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '/' ) translator.emit(Taco(OP_DIV,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '+' ) translator.emit(Taco(OP_PLUS,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '-' ) translator.emit(Taco(OP_MINUS,retSymbol.id,CLHS.id,CRHS.id));
+
+  if(retSymbol.isInitialized){// propagate initial value
+    if(retType == MM_CHAR_TYPE) {
+      switch(opChar){
+      case '*' : retSymbol.value.charVal = CLHS.value.charVal*CRHS.value.charVal; break;
+      case '/' : {
+	if( CRHS.value.charVal == 0 ) {
+	  parser.error(rLoc,"Division by zero.");
+	}
+	retSymbol.value.charVal = CLHS.value.charVal/CRHS.value.charVal;
+      }break;
+      case '+' : retSymbol.value.charVal = CLHS.value.charVal+CRHS.value.charVal; break;
+      case '-' : retSymbol.value.charVal = CLHS.value.charVal-CRHS.value.charVal; break;
+      default:break;
+      };
+    } else if(retType == MM_INT_TYPE) {
+      switch(opChar){
+      case '*' : retSymbol.value.intVal = CLHS.value.intVal*CRHS.value.intVal; break;
+      case '/' : {
+	if( CRHS.value.charVal == 0 ) {
+	  parser.error(rLoc,"Division by zero.");
+	}
+        retSymbol.value.intVal = CLHS.value.intVal / CRHS.value.intVal;
+      }break;
+      case '+' : retSymbol.value.intVal = CLHS.value.intVal + CRHS.value.intVal; break;
+      case '-' : retSymbol.value.intVal = CLHS.value.intVal - CRHS.value.intVal; break;
+      default:break;
+      };
+    } else if(retType == MM_DOUBLE_TYPE) {
+      switch(opChar){
+      case '*' : retSymbol.value.doubleVal = CLHS.value.doubleVal * CRHS.value.doubleVal; break;
+      case '/' : retSymbol.value.doubleVal = CLHS.value.doubleVal / CRHS.value.doubleVal; break;
+      case '+' : retSymbol.value.doubleVal = CLHS.value.doubleVal + CRHS.value.doubleVal; break;
+      case '-' : retSymbol.value.doubleVal = CLHS.value.doubleVal - CRHS.value.doubleVal; break;
+      default:break;
+      };
+    }
+  }
   retExp.symbol = retRef;
 }
 
@@ -1322,12 +1529,50 @@ void emitIntegerBinaryOperation(char opChar,
   Symbol & retSymbol = translator.getSymbol(retRef);
   Symbol & CLHS = translator.getSymbol(LHR);
   Symbol & CRHS = translator.getSymbol(RHR);
+
+  retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
+  
   if( opChar == '%' ) translator.emit(Taco(OP_MOD,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '<' ) translator.emit(Taco(OP_SHL,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '>' ) translator.emit(Taco(OP_SHR,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '&' ) translator.emit(Taco(OP_BIT_AND,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '^' ) translator.emit(Taco(OP_BIT_XOR,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '|' ) translator.emit(Taco(OP_BIT_OR,retSymbol.id,CLHS.id,CRHS.id));
+  
+  if(retSymbol.isInitialized){// propagate initial value
+    if(retType == MM_CHAR_TYPE) {
+      switch(opChar){
+      case '%' : {
+	if( CRHS.value.charVal == 0 ) {
+	  parser.error(rLoc,"Division by zero.");
+	}
+	retSymbol.value.charVal = CLHS.value.charVal % CRHS.value.charVal;
+      }break;
+      case '<' : retSymbol.value.charVal = CLHS.value.charVal << CRHS.value.charVal; break;
+      case '>' : retSymbol.value.charVal = CLHS.value.charVal >> CRHS.value.charVal; break;
+      case '&' : retSymbol.value.charVal = CLHS.value.charVal & CRHS.value.charVal; break;
+      case '^' : retSymbol.value.charVal = CLHS.value.charVal ^ CRHS.value.charVal; break;
+      case '|' : retSymbol.value.charVal = CLHS.value.charVal | CRHS.value.charVal; break;
+      default:break;
+      };
+    } else if(retType == MM_INT_TYPE) {
+      switch(opChar){
+      case '%' : {
+	if( CRHS.value.charVal == 0 ) {
+	  parser.error(rLoc,"Division by zero.");
+	}
+        retSymbol.value.intVal = CLHS.value.intVal % CRHS.value.intVal;
+      }break;
+      case '<' : retSymbol.value.intVal = CLHS.value.intVal << CRHS.value.intVal; break;
+      case '>' : retSymbol.value.intVal = CLHS.value.intVal >> CRHS.value.intVal; break;
+      case '&' : retSymbol.value.intVal = CLHS.value.intVal & CRHS.value.intVal; break;
+      case '^' : retSymbol.value.intVal = CLHS.value.intVal ^ CRHS.value.intVal; break;
+      case '|' : retSymbol.value.intVal = CLHS.value.intVal | CRHS.value.intVal; break;
+      default:break;
+      };
+    }
+  }
+  
   retExp.symbol = retRef;
 }
 
@@ -1371,3 +1616,5 @@ void emitConditionOperation(char opChar,
   retExp.falseList.push_back(translator.nextInstruction());
   translator.emit(Taco(OP_GOTO,""));
 }
+
+/****************************************************************************************************/
