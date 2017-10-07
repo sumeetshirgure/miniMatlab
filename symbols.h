@@ -19,6 +19,14 @@ union InitialValue {
   double doubleVal;
 };
 
+enum SymbolType {
+  LOCAL = 0 , // local variable name
+  TEMP ,      // compiler generated temporary
+  RETVAL ,    // first symbol of a function's symbol table
+  PARAM ,     // parameter type symbol
+  LINK        // link to dynamically allocated memory
+};
+
 /* Definition of an entry in a symbol table */
 class Symbol {
 
@@ -27,6 +35,8 @@ public:
   std::string id;
   
   DataType type;
+
+  SymbolType symType;
 
   InitialValue value;
 
@@ -40,10 +50,13 @@ public:
   Symbol ( );
   
   /* Construct empty symbol */
-  Symbol(const std::string&,const DataType &,unsigned int offset);
+  Symbol(const std::string&,const DataType &);
 
   /* Construct and initialize */
-  Symbol(const std::string&,const DataType &,unsigned int offset,InitialValue _value);
+  Symbol(const std::string&,const DataType &,InitialValue);
+
+  /* Dummy symbol */
+  Symbol(const std::string&,const DataType &,const SymbolType &);
   
   virtual ~Symbol() ;
 };
@@ -79,7 +92,7 @@ public:
     Throws error if it exists in table.
     If not , returns index of a dummy symbol which must be initialized by the caller.
   */
-  unsigned int lookup (const std::string &, DataType &) ;
+  unsigned int lookup (const std::string &, DataType &, const SymbolType &) ;
   
   // construct ST
   SymbolTable(unsigned int,const std::string&);

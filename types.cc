@@ -13,7 +13,7 @@ unsigned int DataType::getSize() {
   if( isPointer() )
     return SIZE_OF_PTR;
   if( rows == 0 ) {
-    if( cols == 0 ) return 2 * SIZE_OF_INT ;
+    if( cols == 0 ) return SIZE_OF_PTR;
     if( cols == 1 ) return 0;
     if( cols == 2 ) return SIZE_OF_BOOL;
     if( cols == 3 ) return SIZE_OF_CHAR;
@@ -32,14 +32,14 @@ bool DataType::operator!=(const DataType & type) {
   return pointers != type.pointers or rows != type.rows or cols != type.cols ;
 }
 
-bool DataType::isProperMatrix() {
+bool DataType::isStaticMatrix() {
   return pointers==0 and rows != 0 and cols != 0 ;
 }
 
-bool DataType::isMalformedType() {
+bool DataType::isIllegalDecalaration() {
   if( cols == 0 and rows != 0 ) return true;
+  if( rows == 0 and cols == 0 and pointers == 0 ) return false; // dynamic matrices
   if( rows == 0 and (cols  > 5 or cols < 3) ) return true;
-  if( rows == 0 and cols == 0 and pointers == 0 ) return true;
   return false;
 }
 

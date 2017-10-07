@@ -257,25 +257,38 @@ primary_expression {
   std::swap($$,$1);
 }
 |
-/* Dereference matrix element. Empty expression not allowed.
-   exactly two addresses are required */
+/* Store element offset. Turn on reference flag.
+    Empty expressions not allowed, exactly two indices are required. */
 postfix_expression "[" expression "]" "[" expression "]" {
   Symbol & lSym = translator.getSymbol($1.symbol);
   std::swap($$,$1);
-  
-  if( !$$.isReference and lSym.type.isProperMatrix() ) {// simple matricks
+  if( !$$.isReference and lSym.type.isStaticMatrix() ) {// simple matricks
     DataType addressType = MM_INT_TYPE;
     SymbolRef tempRef = translator.genTemp(addressType);
     Symbol & temp = translator.getSymbol(tempRef);
-    
+    Symbol & LHS = translator.getSymbol($$.symbol);
     Symbol & rowIndex = translator.getSymbol($3.symbol);
     Symbol & colIndex = translator.getSymbol($6.symbol);
     if( rowIndex.type != MM_INT_TYPE or colIndex.type != MM_INT_TYPE ) {
-      throw syntax_error(@$ , "Non-integral index for matrix " + lSym.id + "." );
+      throw syntax_error(@$ , "Non-integral index for matrix " + LHS.id + "." );
     }
-
-    /* Edit this to take dimension from memory instead of symbol table.? */
-    translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,std::to_string(lSym.type.cols)));
+    translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,std::to_string(LHS.type.cols)));
+    translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
+    translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
+    translator.emit(Taco(OP_PLUS,temp.id,temp.id,std::to_string(2*SIZE_OF_INT)));
+    $$.auxSymbol = tempRef;
+    $$.isReference = true;
+  } else if( !$$.isReference and lSym.type == MM_MATRIX_TYPE ) {
+    DataType addressType = MM_INT_TYPE;
+    SymbolRef tempRef = translator.genTemp(addressType);
+    SymbolRef temp2Ref = translator.genTemp(addressType);
+    Symbol & temp = translator.getSymbol(tempRef);
+    Symbol & temp2 = translator.getSymbol(temp2Ref);
+    Symbol & LHS = translator.getSymbol($$.symbol);
+    Symbol & rowIndex = translator.getSymbol($3.symbol);
+    Symbol & colIndex = translator.getSymbol($6.symbol);
+    translator.emit(Taco(OP_RXC,temp2.id,LHS.id, std::to_string(SIZE_OF_INT) ));//t2 = m[4] (# of columns)
+    translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,temp2.id));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
     translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,std::to_string(2*SIZE_OF_INT)));
@@ -284,42 +297,12 @@ postfix_expression "[" expression "]" "[" expression "]" {
   } else {
     throw syntax_error(@$ , "Invalid type for subscripting.");
   }
+  
 }
 |
 /* Function call */
 postfix_expression "(" optional_argument_list ")" {
-  Symbol & lSym = translator.getSymbol($1.symbol);
-  std::swap($$,$1);
-  if( lSym.type != MM_FUNC_TYPE or lSym.child == 0 ) {
-    throw syntax_error( @$ , lSym.id + " is not a defined function." );
-  } else {
-    bool paramCheck = true;
-    std::vector<Expression> & paramList = $3;
-    SymbolTable & symTable = translator.tables[lSym.child];
-    if( paramList.size() != symTable.params ) {
-      paramCheck = false;
-    } else {
-      for(int idx = 0;idx < paramList.size(); idx++ ) {
-	Symbol & parameter = translator.getSymbol(paramList[idx].symbol);
-	/* TODO : check if paramList[idx] is a reference. If so, create a copy. */
-	// In case of pointers, do internal reassignment.
-	if( symTable.table[idx+1].type != parameter.type ) {
-	  paramCheck = false;
-	  break;
-	}
-	translator.emit(Taco(OP_PARAM,parameter.id));
-      }
-    }
-    if( not paramCheck ) {
-      throw syntax_error(@$, lSym.id + " is not called with proper parameters." );
-    }
-    SymbolRef retRef = translator.genTemp(symTable.table[0].type);
-    Symbol & retVal = translator.getSymbol(retRef);
-    translator.emit(Taco(OP_CALL,retVal.id,lSym.id,std::to_string(paramList.size())));
-    $$.symbol = retRef;
-    $$.isReference = false;
-  }
-
+  throw syntax_error(@$,"TODO.");
 }
 |
 postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
@@ -342,13 +325,11 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
       Symbol & LHS = translator.getSymbol($$.symbol);
       translator.emit(Taco(OP_R_DEREF,retSymbol.id,LHS.id));// ret = *v
       Symbol & newSymbol = translator.getSymbol(newRef);
-      if( $2 == '+' )
-	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
-      else
-	translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
+      if( $2 == '+' ) translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      else translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
       translator.emit(Taco(OP_L_DEREF,LHS.id,newSymbol.id));//copy back : *v = temp
       $$.symbol = retRef;// returns ret
-    } else if( lSym.type.isProperMatrix() ) { // reference to matrix element
+    } else if( lSym.type.isStaticMatrix() or lSym.type == MM_MATRIX_TYPE ) { // reference to matrix element
       DataType elementType = MM_DOUBLE_TYPE;
       SymbolRef retRef = translator.genTemp(elementType);
       SymbolRef newRef = translator.genTemp(elementType);
@@ -357,16 +338,14 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
       Symbol & LHS = translator.getSymbol($$.symbol);
       translator.emit(Taco(OP_RXC,retSymbol.id,LHS.id,auxSymbol.id));// ret = m[off]
       Symbol & newSymbol = translator.getSymbol(newRef);
-      if( $2 == '+' )
-	translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
-      else
-	translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
+      if( $2 == '+' ) translator.emit(Taco(OP_PLUS,newSymbol.id,retSymbol.id,"1"));// temp = ret+1
+      else translator.emit(Taco(OP_MINUS,newSymbol.id,retSymbol.id,"1"));// temp = ret-1
       translator.emit(Taco(OP_LXC,LHS.id,auxSymbol.id,newSymbol.id));//copy back : m[off] = temp
       $$.symbol = retRef;
-      $$.isReference = false;
     } else {
       throw syntax_error(@$, "Invalid operand." );
     }
+    $$.isReference = false;
   } else if( type == MM_CHAR_TYPE or type == MM_INT_TYPE or type == MM_DOUBLE_TYPE ) {
     if( translator.isTemporary($$.symbol) ) {
       throw syntax_error(@$, "Invalid operand." );
@@ -422,26 +401,25 @@ unary_operator unary_expression {
       if( rSym.type.isPointer() ) {
 	SymbolRef retRef = translator.genTemp(rSym.type);
 	Symbol & retSymbol = translator.getSymbol(retRef);
-	translator.emit(Taco(OP_COPY,retSymbol.id,rSym.id));
+	Symbol & RHS = translator.getSymbol($$.symbol);
+	translator.emit(Taco(OP_COPY,retSymbol.id,RHS.id));
 	$$.symbol = retRef;
-      } else if( rSym.type.isProperMatrix() ) { // reference to matrix element
-	DataType pointerType = MM_DOUBLE_TYPE;
-	pointerType.pointers++;
+      } else if( rSym.type.isStaticMatrix() ) { // reference to matrix element
+	DataType pointerType = MM_DOUBLE_TYPE; pointerType.pointers++; // double *
 	SymbolRef retRef = translator.genTemp(pointerType);
 	Symbol & retSymbol = translator.getSymbol(retRef);
-	translator.emit(Taco(OP_REFER,retSymbol.id,rSym.id)); // take address of base
+	Symbol & RHS = translator.getSymbol($$.symbol);
+	translator.emit(Taco(OP_REFER,retSymbol.id,RHS.id)); // take address of base
 	Symbol & auxSymbol = translator.getSymbol($$.auxSymbol);
-	translator.emit(Taco(OP_PLUS,retSymbol.id,retSymbol.id,auxSymbol.id)); // take address of base
+	translator.emit(Taco(OP_PLUS,retSymbol.id,retSymbol.id,auxSymbol.id));// add offset
 	$$.symbol = retRef;
       } else {
 	throw syntax_error(@$, "Invalid operand to take reference." );
       }
     } else if ( rSym.type.isPointer() or rSym.type == MM_CHAR_TYPE or
-		rSym.type == MM_INT_TYPE or rSym.type == MM_DOUBLE_TYPE or
-		rSym.type.isProperMatrix() ) { // proper matrix
-      if( translator.isTemporary($$.symbol) ) {
-	// cannot take reference of compiler generated temporary
-	throw syntax_error(@$ , "Invalid operand to take reference.");
+		rSym.type == MM_INT_TYPE or rSym.type == MM_DOUBLE_TYPE ) {//Matrices cannot be referenced
+      if( translator.isTemporary($$.symbol) ) {	// cannot take reference of compiler generated temporary
+	throw syntax_error(@$ , "Cannot take reference of non-lvalue.");
       }
       DataType pointerType = rSym.type;
       pointerType.pointers++;
@@ -462,9 +440,9 @@ unary_operator unary_expression {
 	Symbol & retSymbol = translator.getSymbol(retRef);
 	translator.emit(Taco(OP_R_DEREF,retSymbol.id,rSym.id));
 	$$.symbol = retRef;
-	// $$.isReference = true; // Not a reference
+	$$.isReference = true;
       } else {
-	$$.isReference = true;//  turn reference flag on for possible dereferencing
+	$$.isReference = true;
       }
     } else {
       throw syntax_error(@$ , "Cannot dereference non-pointer type.");
@@ -486,7 +464,7 @@ unary_operator unary_expression {
 	Symbol & retSymbol = translator.getSymbol(retRef);
 	translator.emit(Taco(OP_R_DEREF,retSymbol.id,rSym.id));// ret = *x
 	$$.symbol = retRef;
-      } else if( rSym.type.isProperMatrix() ){
+      } else if( rSym.type.isStaticMatrix() ){
 	DataType elementType = MM_DOUBLE_TYPE;
 	SymbolRef retRef = translator.genTemp(elementType);
 	Symbol & retSymbol = translator.getSymbol(retRef);
@@ -504,7 +482,7 @@ unary_operator unary_expression {
       Symbol & retSymbol = translator.getSymbol(retRef);
       translator.emit(Taco(OP_COPY,retSymbol.id,rSym.id));
       $$.symbol = retRef;
-    } else if( rSym.type.isProperMatrix() ) {
+    } else if( rSym.type.isStaticMatrix() ) {
       throw syntax_error(@$ , "Unary plus on matrices not supported yet.");
     } else {
       throw syntax_error(@$ , "Invalid type for unary plus.");
@@ -526,7 +504,7 @@ unary_operator unary_expression {
 	Symbol & retSymbol = translator.getSymbol(retRef);
 	translator.emit(Taco(OP_R_DEREF,retSymbol.id,rSym.id));// ret = *x
 	$$.symbol = retRef;
-      } else if( rSym.type.isProperMatrix() ){
+      } else if( rSym.type.isStaticMatrix() ){
 	DataType elementType = MM_DOUBLE_TYPE;
 	SymbolRef retRef = translator.genTemp(elementType);
 	Symbol & retSymbol = translator.getSymbol(retRef);
@@ -546,7 +524,7 @@ unary_operator unary_expression {
       Symbol & retSymbol = translator.getSymbol(retRef);
       translator.emit(Taco(OP_UMINUS,retSymbol.id,rSym.id));
       $$.symbol = retRef;
-    } else if( rSym.type.isProperMatrix() ) { // can negate matrix
+    } else if( rSym.type.isStaticMatrix() ) { // can negate matrix
       throw syntax_error(@$ , "Unary minus on matrices not supported yet." );
     } else {
       throw syntax_error(@$ , "Invalid type for unary minus.");
@@ -725,7 +703,7 @@ conditional_expression {
   if( $1.isReference ) {
     if( lSym.type.isPointer() ) { // pointer reference
       DataType elementType = lSym.type; elementType.pointers--;
-      if( elementType.isProperMatrix() ) {
+      if( elementType.isStaticMatrix() ) {
 	throw syntax_error( @1, "Matrix assignment not supported yet.");
       }else if( elementType.isPointer() ) { // impossible
 	throw syntax_error( @3 , "Invalid operand." );
@@ -740,7 +718,7 @@ conditional_expression {
       } else {
 	throw syntax_error( @1 , "Invalid operand." );
       }
-    } else if( lSym.type.isProperMatrix() ) { // matrix element
+    } else if( lSym.type.isStaticMatrix() ) { // matrix element
       SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
       Symbol & RHS = translator.getSymbol(RHR);
       if( RHS.type != MM_DOUBLE_TYPE ) {
@@ -768,7 +746,7 @@ conditional_expression {
 	throw syntax_error(@3,"Invalid operand.");
       }
       translator.emit(Taco(OP_COPY,lSym.id,rSym.id)); // copy address
-    } else if( lSym.type.isProperMatrix() ) { // matrix assignment
+    } else if( lSym.type.isStaticMatrix() ) { // matrix assignment
       throw syntax_error(@1,"Matrix assignment not supported yet.");
     } else if( lSym.type == MM_CHAR_TYPE or lSym.type == MM_INT_TYPE or lSym.type == MM_DOUBLE_TYPE ) {
       SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
@@ -803,8 +781,7 @@ assignment_expression { std::swap($$,$1); } ;
 /* i.e : `int ;' is not syntactically correct */
 /* Also since only one type specifier is supported , `declaration_specifiers' is omitted */
 declaration :
-type_specifier initialized_declarator_list ";" {translator.typeContext.pop();}
-;
+type_specifier initialized_declarator_list ";" {translator.typeContext.pop();} ;
 
 %type <DataType> type_specifier;
 type_specifier :
@@ -818,41 +795,35 @@ initialized_declarator_list :
 initialized_declarator | initialized_declarator_list "," initialized_declarator ;
 
 initialized_declarator :
-declarator {
-}
-|
-declarator "=" initializer {
-  /*** TODO : Decide matrix pointer policy ***/
+declarator { } | declarator "=" initializer {
   /*TODO : maintain initial values over expression symbols */
   // check types and optionally initalize expression */
-}
-;
+} ;
 
 %type < SymbolRef > declarator;
 declarator :
 optional_pointer direct_declarator {
   $$ = $2;
   Symbol & symbol = translator.getSymbol($$);
-  /* If it is a function declaration let it pass. */
-  if( symbol.type.isMalformedType() ) {
-    throw syntax_error( @$ , "Invalid type for declaration" );
+  /* TODO : If it is a function declaration in a global scope let it pass. */
+  if( translator.currentEnvironment() == 0 and symbol.type == MM_FUNC_TYPE ) {
+    throw syntax_error( @$ , "Function declaration not supported yet." );
+  } else if( symbol.type.isIllegalDecalaration() ) {
+    throw syntax_error( @$ , "Invalid type for declaration." );
   }
   translator.updateSymbolTable($2.first);
   translator.typeContext.top().pointers -= $1;
-}
-;
+} ;
 
 %type <unsigned int> optional_pointer;
-optional_pointer :
-%empty {
-  $$ = 0;
-}
-|
+optional_pointer : %empty { $$ = 0; } |
 optional_pointer "*" {
+  if( translator.typeContext.top() == MM_MATRIX_TYPE ) {
+    throw syntax_error(@$, "Matrices cannot have pointers.");
+  }
   translator.typeContext.top().pointers++;
   $$ = $1 + 1;
-}
-;
+} ;
 
 %type < SymbolRef > direct_declarator;
 direct_declarator :
@@ -862,71 +833,83 @@ IDENTIFIER {
     // create a new symbol in current scope
     DataType &  curType = translator.typeContext.top() ;
     SymbolTable & table = translator.currentTable();
-    $$ = std::make_pair(translator.currentEnvironment(),
-			table.lookup( $1 , curType ));
+    if(translator.parameterDeclaration) {
+      $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::PARAM));
+    } else {
+      $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));
+    }
   } catch ( ... ) {
     /* Already declared in current scope */
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
   }
+  
 }
 |
 /* Function declaration */
 IDENTIFIER "(" {
   /* Create a new environment (to store the parameters and return type) */
+  if(translator.parameterDeclaration) {
+    throw syntax_error( @$ , "Syntax error." ); 
+  }
+  translator.parameterDeclaration = true;
+  
   unsigned int oldEnv = translator.currentEnvironment();
   unsigned int newEnv = translator.newEnvironment($1);
   SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
   DataType &  curType = translator.typeContext.top();
   try {
-    currTable.lookup("ret#" , curType );// push return type
+    currTable.lookup("ret#" , curType , SymbolType::RETVAL );// push return type
   } catch ( ... ) {
-    throw syntax_error( @$ , "Internal error." );
+    throw syntax_error( @$ , "Unexpected error. Debug compiler." );
   }
 } optional_parameter_list ")" {
-
   unsigned int currEnv = translator.currentEnvironment();
   SymbolTable & currTable = translator.currentTable();
   currTable.params = $4;
-  translator.popEnvironment();
   
+  translator.parameterDeclaration = false;
+  translator.popEnvironment();
   try {
     SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
-    $$ = std::make_pair(translator.currentEnvironment()
-			,outerTable.lookup( $1 , symbolType ));
+    $$ = std::make_pair(translator.currentEnvironment() ,outerTable.lookup($1,symbolType,SymbolType::LOCAL));
     Symbol & newSymbol = translator.getSymbol($$);
     newSymbol.child = currEnv;
-  } catch ( ... ) {
-    /* Already declared in current scope */
+  } catch ( ... ) {/* Already declared in current scope */
     throw syntax_error( @$ , $1 + " has already been declared in this scope." );
   }
+  
 }
 |
-/* Matrix declaration. Empty dimensions not allowed during declaration. */
-direct_declarator "[" expression "]" {
-  // only 2-dimensions to be supported
-  $$ = $1;
-
-  Symbol & curSymbol = translator.getSymbol($$);
-  // dimensions cannot be specified while declaring pointers to matrices
-  if( curSymbol.type == MM_MATRIX_TYPE ) {
-    
-    // store expression value in m[0]
-    /* TODO : Evaluate the given expression */
-    curSymbol.type.rows = 4;// expression value : must be initialised
-    
-  } else if( curSymbol.type.rows != 0 and curSymbol.type.cols == 0 ) {
-    
-    // store expression value in m[4]
-    /* TODO : Evaluate the given expression */
-    curSymbol.type.cols = 3;
-    
-  } else {
-    throw syntax_error( @$ , "Incompatible type for matrix declaration" );
+/* Matrix declaration. Empty dimensions not allowed during declaration. Exactly two dimensions are needed. */
+IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be supported
+  
+  // TODO : based on the static values of expressions $3 and $6 , find out if matrix is static or dynamic
+  
+  DataType &  curType = translator.typeContext.top() ;
+  if(curType != MM_MATRIX_TYPE) {
+    throw syntax_error(@$,"Incompatible type for matrix declaration.");
   }
-}
-;
+  
+  if(translator.parameterDeclaration) {
+    throw syntax_error(@$,"Dimensions cannot be specified while declaring parameters.");
+  }
+  
+  try {
+    // create a new symbol in current scope
+    SymbolTable & table = translator.currentTable();
+    $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));//
+    Symbol & curSymbol = translator.getSymbol($$);
+    curSymbol.type.rows = 4; // store expression value in m[0]
+    curSymbol.type.cols = 3; // store expression value in m[4]
+    /* TODO : Support dynamically linked matrices as well. */
+    
+  } catch ( ... ) {/* Already declared in current scope */
+    throw syntax_error( @$ , $1 + " has already been declared in this scope." );
+  }
+
+} ;
 
 %type <unsigned int> optional_parameter_list;
 optional_parameter_list :
@@ -1001,10 +984,9 @@ compound_statement :
 "{" {
   /* LBrace encountered : push a new symbol table and link it to its parent */
   unsigned int oldEnv = translator.currentEnvironment();
-  DataType voidPointer = MM_VOID_TYPE;
-  voidPointer.pointers++;
+  DataType voidType = MM_VOID_TYPE; // 
   unsigned int newEnv = translator.newEnvironment("");
-  SymbolRef ref = translator.genTemp( oldEnv, voidPointer );
+  SymbolRef ref = translator.genTemp( oldEnv, voidType );
   Symbol & temp = translator.getSymbol(ref);
   translator.currentTable().name = temp.id; // What TODO with this?
   temp.child = newEnv;
@@ -1013,8 +995,7 @@ compound_statement :
 } optional_block_item_list "}" {
   std::swap($$,$3);
   translator.popEnvironment();
-}
-;
+} ;
 
 %type <AddressList> optional_block_item_list;
 optional_block_item_list :
@@ -1139,6 +1120,7 @@ optional_expression : %empty { } | expression { std::swap($$,$1); } ;
 
 translation_unit :
 external_declarations "EOF" {
+  // TODO : post-translation processing / optimizations
   // translation completed
   YYACCEPT;
 }
@@ -1162,11 +1144,10 @@ type_specifier function_declarator "{" {
 } optional_block_item_list "}" {
   translator.patchBack($5,translator.nextInstruction());
   translator.emit(Taco(OP_FUNC_END,translator.currentTable().name));
-  // "sort out" the current environment for generation of stack frame
+  // TODO : "sort out" the current environment for generation of stack frame
   translator.environment.pop();
   translator.typeContext.pop(); // corresponding to the type_specifier
-}
-;
+} ;
 
 %type < SymbolRef > function_declarator;
 function_declarator :
@@ -1207,7 +1188,7 @@ SymbolRef getScalarBinaryOperand(mm_translator & translator,
       } else { // non scalar operand
         parser.error(loc , "Invalid operand.");
       }
-    } else if( rType.isProperMatrix() ) { // matrix element
+    } else if( rType.isStaticMatrix() or rType == MM_MATRIX_TYPE ) { // matrix element
       DataType elementType = MM_DOUBLE_TYPE;
       ret = translator.genTemp(elementType);
       Symbol & retSymbol = translator.getSymbol(ret);

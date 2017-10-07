@@ -50,11 +50,11 @@ public:
   /* Checks if two type are not the same */
   bool operator != (const DataType &) ;
   
-  /* Checks if type is proper matrix */
-  bool isProperMatrix();
+  /* Checks if type is a static matrix */
+  bool isStaticMatrix();
   
-  /* Checks if type definition is malformed */
-  bool isMalformedType();
+  /* Checks if type definition is a legal declaration */
+  bool isIllegalDecalaration();
 };
 
 /* Print the type */

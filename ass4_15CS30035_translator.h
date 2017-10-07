@@ -92,8 +92,8 @@ public:
   
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
-
-
+  bool parameterDeclaration; // flags if parameter is being declar
+  
   /* Helper functions */
   
   // returns wether given symbol is a temporary

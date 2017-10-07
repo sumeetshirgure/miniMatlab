@@ -5,6 +5,7 @@
 mm_translator::mm_translator() :
   trace_scan(false) , trace_parse(false) , trace_tacos(false) {
 
+  parameterDeclaration = false;
   temporaryCount = 0; // initialize tempCount to 0  
   newEnvironment("globalTable"); // initialize global table
   globalTable().parent = 0;
@@ -101,19 +102,19 @@ SymbolRef mm_translator::genTemp(DataType & type) {
   std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
   int idx = currentEnvironment();
-  return std::make_pair(idx,tables[idx].lookup(tempId,type));
+  return std::make_pair(idx,tables[idx].lookup(tempId,type,SymbolType::TEMP));
 }
 
 SymbolRef mm_translator::genTemp(unsigned int idx , DataType & type) {
   std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  return std::make_pair(idx,tables[idx].lookup(tempId,type));
+  return std::make_pair(idx,tables[idx].lookup(tempId,type,SymbolType::TEMP));
 }
 
 // simply check first character of id
 bool mm_translator::isTemporary(const SymbolRef & ref) {
   Symbol & symbol = getSymbol(ref);
-  return symbol.id.length() > 0 and symbol.id[0] == '#';
+  return symbol.symType == SymbolType::TEMP;
 }
 
 void mm_translator::updateSymbolTable(unsigned int tableId) {
