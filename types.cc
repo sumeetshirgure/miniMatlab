@@ -36,6 +36,10 @@ bool DataType::isStaticMatrix() {
   return pointers==0 and rows != 0 and cols != 0 ;
 }
 
+bool DataType::isMatrix() {
+  return isStaticMatrix() or (rows==0 and cols==0 and pointers==0);
+}
+
 bool DataType::isIllegalDecalaration() {
   if( cols == 0 and rows != 0 ) return true;
   if( rows == 0 and cols == 0 and pointers == 0 ) return false; // dynamic matrices

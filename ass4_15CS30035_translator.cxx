@@ -98,6 +98,24 @@ Symbol & mm_translator::getSymbol(SymbolRef ref) {
   return tables[ref.first].table[ref.second];
 }
 
+// returns if expression is a programmer written symbol reference
+bool mm_translator::isSimpleReference(Expression & expr) {
+  return expr.symbol == expr.auxSymbol;
+};
+  
+// returns if expression points to some address
+bool mm_translator::isPointerReference(Expression &expr) {
+  DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
+  baseType.pointers++;
+  return baseType == auxType;
+};
+  
+// returns if expression refers to some element of some matrix
+bool mm_translator::isMatrixReference(Expression &expr) {
+  DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
+  return baseType.isMatrix() and (auxType == MM_INT_TYPE);
+}
+
 SymbolRef mm_translator::genTemp(DataType & type) {
   std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
@@ -111,7 +129,6 @@ SymbolRef mm_translator::genTemp(unsigned int idx , DataType & type) {
   return std::make_pair(idx,tables[idx].lookup(tempId,type,SymbolType::TEMP));
 }
 
-// simply check first character of id
 bool mm_translator::isTemporary(const SymbolRef & ref) {
   Symbol & symbol = getSymbol(ref);
   return symbol.symType == SymbolType::TEMP;

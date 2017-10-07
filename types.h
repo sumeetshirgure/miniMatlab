@@ -52,6 +52,8 @@ public:
   
   /* Checks if type is a static matrix */
   bool isStaticMatrix();
+  /* Checks if type is a matrix */
+  bool isMatrix();
   
   /* Checks if type definition is a legal declaration */
   bool isIllegalDecalaration();

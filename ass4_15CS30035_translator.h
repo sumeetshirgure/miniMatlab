@@ -63,6 +63,14 @@ public:
   // get symbol by {tableIndex , entryIndex}
   Symbol & getSymbol(SymbolRef ref);
   
+  /* Checks for l-values */
+  // returns if expression is a programmer written symbol reference
+  bool isSimpleReference(Expression &);
+  // returns if expression points to some address
+  bool isPointerReference(Expression &);
+  // returns if expression refers to some element of some matrix
+  bool isMatrixReference(Expression &);
+  
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference
   SymbolRef genTemp( DataType & ) ;
