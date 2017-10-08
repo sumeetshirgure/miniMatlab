@@ -203,13 +203,16 @@ int main( int argc , char * argv[] ){
       translator.trace_scan = trace_scan;
       translator.trace_tacos = trace_tacos;
       int result = translator.translate(cmd);
-      if(result != 0) cout << cmd << " : Translation failed " << endl;
+      if(result != 0) cout << cmd << " : Translation failed" << endl;
       else {
+	cout << cmd << " : Translated code :" << endl;
 	cout << "3 Address codes :" << endl;
 	translator.printQuadArray();
+	for(int i=0;i<100;i++)cout<<'-';cout << endl;
 	cout << endl << "Symbol tables : " << endl;
 	translator.printSymbolTable();
 	cout << cmd << " : Translation completed successfully " << endl;
+	for(int i=0;i<100;i++)cout<<'*';cout << endl;
       }
     }
   }

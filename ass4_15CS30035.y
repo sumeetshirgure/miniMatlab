@@ -94,7 +94,7 @@
   @$.initialize( &translator.file );
  }
 
-/* Enable verobse parse tracing */
+/* Enable verbose parse tracing */
 %define parse.trace;
 %define parse.error verbose;
 
@@ -162,10 +162,10 @@ COMMA ","
 %token <std::string> IDENTIFIER STRING_LITERAL ;
 %token <char> CHARACTER_CONSTANT ;
 
-/* Only 32-bit signed integer is supported for now */
+/* Only 32-bit signed integer is supported. */
 %token <int> INTEGER_CONSTANT ;
 
-/* All float-point arithmetic is in double precision only */
+/* All float-point arithmetic is in double precision only. */
 %token <double> FLOATING_CONSTANT ;
 
 /************End token definitions*****************/
@@ -266,7 +266,7 @@ primary_expression {
     Empty expressions not allowed, exactly two indices are required. */
 postfix_expression "[" expression "]" "[" expression "]" {
   
-  if( translator.isMatrixReference($1) ) {
+  if( $1.isReference and translator.isMatrixReference($1) ) {
     throw syntax_error(@1,"Syntax error.");
   }
   
@@ -306,7 +306,7 @@ postfix_expression "[" expression "]" "[" expression "]" {
     $$.auxSymbol = tempRef;
     $$.isReference = true;
   } else {
-    throw syntax_error(@$ , "Invalid type for subscripting.");
+    throw syntax_error(@$ , "Illegal type for subscripting.");
   }
 
 }
@@ -384,6 +384,7 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
 |
 postfix_expression ".'" {
   /* TODO : Support matrix transposition */
+  // DogeMaster
   throw syntax_error(@$, "Matrix transpose not supported yet.");
 }
 ;
@@ -418,7 +419,7 @@ inc_dec_op unary_expression { // prefix increment operator
 	Symbol & RHS = translator.getSymbol($$.symbol);
 	if( $1 == '+' ) translator.emit(Taco(OP_PLUS,ret.id,RHS.id,std::to_string(elementType.getSize())));
 	else translator.emit(Taco(OP_MINUS,ret.id,RHS.id,std::to_string(elementType.getSize())));
-	translator.emit(Taco(OP_COPY,RHS.id,ret.id));// value before incrementation / decrementation
+	translator.emit(Taco(OP_COPY,RHS.id,ret.id));// value after incrementation / decrementation
 	$$.symbol = retRef;
       } else {// matrix or other types
 	throw syntax_error(@2,"Invalid operand.");
@@ -514,7 +515,7 @@ unary_operator unary_expression {
   case '+' : {
     if( $$.isReference ) {
       if( translator.isSimpleReference($$) ) {
-	if( rType.isMatrix() ) {// Dynoge
+	if( rType.isMatrix() ) {// DogeMaster
 	  throw syntax_error(@$,"Matrix operations not supported yet.");
 	}
 	SymbolRef retRef = translator.genTemp(rType);
@@ -551,7 +552,7 @@ unary_operator unary_expression {
   case '-' : {
     if( $$.isReference ) {
       if( translator.isSimpleReference($$) ) {
-	if( rType.isMatrix() ) {// Dynoge
+	if( rType.isMatrix() ) {// DogeMaster
 	  throw syntax_error(@$,"Matrix operations not supported yet.");
 	}
 	SymbolRef retRef = translator.genTemp(rType);
@@ -584,7 +585,7 @@ unary_operator unary_expression {
     } else if( rType.isPointer() ) {
       throw syntax_error(@$ , "Unary minus on pointer not allowed." );
     } else {
-      if( rType.isMatrix() ) {// Dynoge
+      if( rType.isMatrix() ) {// DogeMaster
 	throw syntax_error(@$,"Matrix operations not supported yet.");
       }
       Symbol & RHS = translator.getSymbol($$.symbol);
@@ -633,7 +634,6 @@ unary_operator unary_expression {
 %type <char> unary_operator;
 unary_operator : "&" { $$ = '&'; } |"*" { $$ = '*'; } |"~" { $$='~';} |"+" { $$ = '+'; } |"-" { $$ = '-'; }|"!" { $$ = '!'; };
 
-/// Type casting not supported yet...
 %type <Expression> cast_expression;
 cast_expression : unary_expression { std::swap($$,$1); }
 
@@ -643,7 +643,7 @@ cast_expression {
   std::swap($$,$1);
 } | multiplicative_expression mul_div_op cast_expression { // mul_div_op produces `*' or `/'
   // TODO : possible matrix/scalar , matrix/matrix multiplication.. and same for rhs
-  // Dynoge
+  // DogeMaster
   emitScalarBinaryOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);
 } | multiplicative_expression "%" cast_expression {
   emitIntegerBinaryOperation('%',translator,*this,$$,$1,$3,@$,@1,@3);
@@ -657,9 +657,65 @@ additive_expression :
 multiplicative_expression {
   std::swap($$,$1);
 } | additive_expression add_sub_op multiplicative_expression { // add_sub op produces `+' or `-'
-  // TODO : possible matrix addition / subtraction
-  // Dynoge
-  emitScalarBinaryOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);
+  DataType lType = translator.getSymbol($1.symbol).type;
+  DataType rType = translator.getSymbol($3.symbol).type;
+  if( lType.isPointer() or rType.isPointer() ) {
+    if( lType.isPointer() and rType.isPointer() ) {
+      throw syntax_error(@$,"Illegal pointer arithmetic.");
+    }
+    if( lType.isPointer() ) {
+      SymbolRef intRef = getIntegerBinaryOperand(translator,*this,@3,$3);
+      SymbolRef offsetRef;
+      if( !translator.isTemporary(intRef) ){
+	offsetRef = translator.genTemp(rType);
+	Symbol & offsetSymbol = translator.getSymbol(offsetRef);
+	Symbol &baseSymbol = translator.getSymbol($3.symbol);
+	translator.emit(Taco(OP_COPY,offsetSymbol.id,baseSymbol.id));
+      } else offsetRef = intRef;
+      SymbolRef retRef = $1.symbol;
+      if( !translator.isTemporary(retRef) ) {
+	retRef = translator.genTemp(lType);
+	Symbol &retSymbol = translator.getSymbol(retRef);
+	Symbol &baseSymbol = translator.getSymbol($1.symbol);
+	translator.emit(Taco(OP_COPY,retSymbol.id,baseSymbol.id));
+      }
+      Symbol & offsetSym = translator.getSymbol(offsetRef);
+      Symbol & pointerSym = translator.getSymbol(retRef);
+      DataType elemType = lType; elemType.pointers--;
+      translator.emit(Taco(OP_MULT,offsetSym.id,offsetSym.id,std::to_string(elemType.getSize())));
+      if( $2 == '+' ) translator.emit(Taco(OP_PLUS,pointerSym.id,pointerSym.id,offsetSym.id));
+      else translator.emit(Taco(OP_MINUS,pointerSym.id,pointerSym.id,offsetSym.id));
+      $$.symbol = retRef;
+    } else {// rType.isPointer()
+      SymbolRef intRef = getIntegerBinaryOperand(translator,*this,@1,$1);
+      SymbolRef offsetRef;
+      if( !translator.isTemporary(intRef) ){
+	offsetRef = translator.genTemp(lType);
+	Symbol & offsetSymbol = translator.getSymbol(offsetRef);
+	Symbol &baseSymbol = translator.getSymbol($1.symbol);
+	translator.emit(Taco(OP_COPY,offsetSymbol.id,baseSymbol.id));
+      } else offsetRef = intRef;
+      SymbolRef retRef = $3.symbol;
+      if( !translator.isTemporary(retRef) ) {
+	retRef = translator.genTemp(rType);
+	Symbol &retSymbol = translator.getSymbol(retRef);
+	Symbol &baseSymbol = translator.getSymbol($3.symbol);
+	translator.emit(Taco(OP_COPY,retSymbol.id,baseSymbol.id));
+      }
+      Symbol & offsetSym = translator.getSymbol(offsetRef);
+      Symbol & pointerSym = translator.getSymbol(retRef);
+      DataType elemType = rType; elemType.pointers--;
+      translator.emit(Taco(OP_MULT,offsetSym.id,offsetSym.id,std::to_string(elemType.getSize())));
+      if( $2 == '+' ) translator.emit(Taco(OP_PLUS,pointerSym.id,pointerSym.id,offsetSym.id));
+      else throw syntax_error(@$,"Invalid operands. Pointer cannot be negated.");
+      $$.symbol = retRef;
+    }
+    $$.isReference = false;
+  } else {
+    // TODO : possible matrix addition / subtraction
+    // DogeMaster
+    emitScalarBinaryOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);
+  }
 } ;
 
 %type <char> add_sub_op;
@@ -751,7 +807,7 @@ unary_expression "=" assignment_expression {
       DataType lType = translator.getSymbol($$.symbol).type;
       if( lType.isMatrix() ) {// RHS must be matrix
 	/* TODO : support matrix assignment */
-	// Dynoge
+	// DogeMaster
 	throw syntax_error(@1,"Matrix operations not supported yet.");
       } else if( lType == MM_CHAR_TYPE or lType == MM_INT_TYPE or lType == MM_DOUBLE_TYPE ) {
 	SymbolRef RHR = getScalarBinaryOperand(translator,*this,@3,$3);
@@ -853,9 +909,11 @@ declarator { } |
 declarator "=" expression {
   Symbol & defSym = translator.getSymbol($1);
   if( defSym.type.isMatrix() ) {
-    throw syntax_error(@3,"Matrix operations not supported yet.");
+    // TODO : Matrix initialization...
     if( defSym.type.isStaticMatrix() ) {//
-    } else {// Dynoge
+      throw syntax_error(@$,"Non-static initialization of static matrix not allowed.");
+    } else {// DogeMaster
+      throw syntax_error(@3,"Matrix operations not supported yet.");
     }
   } else if( defSym.type.isPointer() ) {
     Symbol & rSym = translator.getSymbol($3.symbol);
@@ -989,7 +1047,7 @@ IDENTIFIER "(" {
 |
 /* Matrix declaration. Empty dimensions not allowed during declaration. Exactly two dimensions are needed. */
 IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be supported
-    
+  
   DataType &  curType = translator.typeContext.top() ;
   if(curType != MM_MATRIX_TYPE) {
     throw syntax_error(@$,"Incompatible type for matrix declaration.");
@@ -1029,7 +1087,7 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
       // Check environment. Globally declared dynamic matrices should not be allowed.
       curSymbol.symType = SymbolType::LINK;
     }
-
+    
     // TODO : write allocator opcodes around here.
     if(rowSym.type == MM_CHAR_TYPE) {
       DataType intType = MM_INT_TYPE;
@@ -1259,8 +1317,7 @@ optional_expression : %empty { } | expression { std::swap($$,$1); } ;
 translation_unit :
 external_declarations "EOF" {
   // TODO : post-translation processing / optimizations
-  // translation completed
-  YYACCEPT;
+  YYACCEPT;// translation completed
 }
 ;
 

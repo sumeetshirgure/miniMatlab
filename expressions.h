@@ -11,10 +11,11 @@ public:
 
   /* Symbol corresponding to ( temporary ) variable holding
      the value of this expression.*/
-  SymbolRef symbol ;
+  SymbolRef symbol;
 
   /* Flags if l-value */
   bool isReference;
+  
   /* Auxiliary symbol to store offsets / pointers. */
   SymbolRef auxSymbol;
 
