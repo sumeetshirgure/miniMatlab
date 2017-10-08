@@ -216,6 +216,7 @@ INTEGER_CONSTANT {
   Symbol & temp = translator.getSymbol(ref);
   temp.value.intVal = $1;
   temp.isInitialized = true;
+  temp.isConstant = true;
   $$.symbol = ref;
   translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 }
@@ -226,6 +227,7 @@ FLOATING_CONSTANT {
   Symbol & temp = translator.getSymbol(ref);
   temp.value.doubleVal = $1;
   temp.isInitialized = true;
+  temp.isConstant = true;
   $$.symbol = ref;
   translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 }
@@ -236,6 +238,7 @@ CHARACTER_CONSTANT {
   Symbol & temp = translator.getSymbol(ref);
   temp.value.charVal = $1;
   temp.isInitialized = true;
+  temp.isConstant = true;
   $$.symbol = ref;
   translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));  
 }
@@ -327,18 +330,6 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
 	translator.emit(Taco(OP_COPY,ret.id,LHS.id));// value before incrementation / decrementation
 	if( $2 == '+' ) translator.emit(Taco(OP_PLUS,LHS.id,LHS.id,"1"));
 	else translator.emit(Taco(OP_MINUS,LHS.id,LHS.id,"1"));
-	if( LHS.isInitialized ) {
-	  ret.isInitialized = true;
-	  if( $2 == '+' ) {
-	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = LHS.value.charVal ++;
-	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = LHS.value.intVal ++;
-	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = LHS.value.doubleVal ++;
-	  } else {
-	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = LHS.value.charVal --;
-	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = LHS.value.intVal --;
-	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = LHS.value.doubleVal --;
-	  }
-	}
 	$$.symbol = retRef;
       } else if( baseType.isPointer() ) {
 	DataType elementType = baseType; elementType.pointers--;
@@ -421,18 +412,6 @@ inc_dec_op unary_expression { // prefix increment operator
 	if( $1 == '+' ) translator.emit(Taco(OP_PLUS,ret.id,RHS.id,"1"));
 	else translator.emit(Taco(OP_MINUS,ret.id,RHS.id,"1"));
 	translator.emit(Taco(OP_COPY,RHS.id,ret.id));// value after incrementation / decrementation
-	if( RHS.isInitialized ) {
-	  ret.isInitialized = true;
-	  if( $1 == '+' ) {
-	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = ++ RHS.value.charVal;
-	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = ++ RHS.value.intVal;
-	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = ++ RHS.value.doubleVal;
-	  } else {
-	    if( baseType == MM_CHAR_TYPE ) ret.value.charVal = -- RHS.value.charVal;
-	    else if( baseType == MM_INT_TYPE ) ret.value.intVal = -- RHS.value.intVal;
-	    else if( baseType == MM_DOUBLE_TYPE ) ret.value.doubleVal = -- RHS.value.doubleVal;
-	  }
-	}
 	$$.symbol = retRef;
       } else if( baseType.isPointer() ) {
 	DataType elementType = baseType; elementType.pointers--;
@@ -616,6 +595,7 @@ unary_operator unary_expression {
 	else if( rType == MM_INT_TYPE ) retSymbol.value.intVal = -RHS.value.intVal;
 	else if( rType == MM_DOUBLE_TYPE ) retSymbol.value.doubleVal = -RHS.value.doubleVal;
       }
+      retSymbol.isConstant = RHS.isConstant;
       $$.symbol = retRef;
     }
   } break;
@@ -771,6 +751,7 @@ unary_expression "=" assignment_expression {
 	  else if( lType == MM_INT_TYPE ) CLHS.value.intVal = CRHS.value.intVal;
 	  else if( lType == MM_DOUBLE_TYPE ) CLHS.value.doubleVal = CRHS.value.doubleVal;
 	}
+	CLHS.isConstant = CRHS.isConstant;
       } else if( lType.isPointer() ) {
 	Symbol & RHS = translator.getSymbol($3.symbol);
 	if( RHS.type == lType ) {
@@ -875,7 +856,7 @@ declarator "=" expression {
     Symbol & CRHS = translator.getSymbol(RHR);
     Symbol & LHS = translator.getSymbol($1);
     translator.emit(Taco(OP_COPY,LHS.id,CRHS.id));// LHS = CRHS
-    LHS.isInitialized = CRHS.isInitialized;
+    LHS.isInitialized = CRHS.isConstant;
     if( LHS.isInitialized ){
       if( defSym.type == MM_CHAR_TYPE ) LHS.value.charVal = CRHS.value.charVal;
       else if( defSym.type == MM_INT_TYPE ) LHS.value.intVal = CRHS.value.intVal;
@@ -1012,7 +993,7 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
     Symbol & rowSym = translator.getSymbol(rowRef);
     Symbol & colSym = translator.getSymbol(colRef);
     
-    if( rowSym.isInitialized and colSym.isInitialized ) {
+    if( rowSym.isConstant and colSym.isConstant ) {
       if( rowSym.type == MM_CHAR_TYPE ) {
 	if(rowSym.value.charVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
 	curSymbol.type.rows = rowSym.value.charVal;
@@ -1028,9 +1009,11 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
 	curSymbol.type.cols = colSym.value.intVal;
       }
     } else {
+      // Check environment. Globally declared dynamic matrices should not be allowed.
       curSymbol.symType = SymbolType::LINK;
     }
-    
+
+    // TODO : write allocator opcodes around here.
     if(rowSym.type == MM_CHAR_TYPE) {
       DataType intType = MM_INT_TYPE;
       rowRef = typeCheck(rowRef,intType,true,translator,*this,@3);
@@ -1130,11 +1113,12 @@ compound_statement :
   unsigned int newEnv = translator.newEnvironment("");
   SymbolRef ref = translator.genTemp( oldEnv, voidType );
   Symbol & temp = translator.getSymbol(ref);
-  translator.currentTable().name = temp.id; // What TODO with this?
+  translator.currentTable().name = temp.id;
   temp.child = newEnv;
   SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
 } optional_block_item_list "}" {
+  // TODO : do scope post-processing
   std::swap($$,$3);
   translator.popEnvironment();
 } ;
@@ -1395,6 +1379,7 @@ SymbolRef typeCheck(SymbolRef ref,
       Symbol & retSymbol = translator.getSymbol(ret);
       Symbol & rhs = translator.getSymbol( ref );
       retSymbol.isInitialized = rhs.isInitialized;
+      retSymbol.isConstant    = rhs.isConstant   ;
       if( type == MM_CHAR_TYPE ) {
 	translator.emit(Taco(OP_CONV_TO_CHAR,retSymbol.id,rhs.id));
 	if( rhs.type == MM_CHAR_TYPE ) {
@@ -1458,6 +1443,7 @@ void emitScalarBinaryOperation(char opChar ,
   Symbol & CRHS = translator.getSymbol(RHR);
 
   retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
+  retSymbol.isConstant    = CLHS.isConstant    and CRHS.isConstant   ;
   
   if( opChar == '*' ) translator.emit(Taco(OP_MULT,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '/' ) translator.emit(Taco(OP_DIV,retSymbol.id,CLHS.id,CRHS.id));
@@ -1531,6 +1517,7 @@ void emitIntegerBinaryOperation(char opChar,
   Symbol & CRHS = translator.getSymbol(RHR);
 
   retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
+  retSymbol.isConstant    = CLHS.isConstant    and CRHS.isConstant   ;
   
   if( opChar == '%' ) translator.emit(Taco(OP_MOD,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '<' ) translator.emit(Taco(OP_SHL,retSymbol.id,CLHS.id,CRHS.id));
