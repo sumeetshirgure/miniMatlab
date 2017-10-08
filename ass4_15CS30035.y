@@ -599,13 +599,39 @@ unary_operator unary_expression {
       $$.symbol = retRef;
     }
   } break;
+    
+  case '~' : {
+    SymbolRef RHR = getIntegerBinaryOperand(translator,*this,@2,$$);
+    Symbol & RHS = translator.getSymbol(RHR);
+    SymbolRef retRef = translator.genTemp(RHS.type);
+    Symbol & retSym = translator.getSymbol(retRef);
+    Symbol & CRHS = translator.getSymbol(RHR);
+    translator.emit(Taco(OP_BIT_NOT,retSym.id,CRHS.id));// ret = ~rhs
+    retSym.isInitialized = CRHS.isInitialized;
+    if( retSym.isInitialized ) {
+      if( CRHS.type == MM_CHAR_TYPE ) {
+	retSym.value.charVal = ~CRHS.value.charVal;
+      } else if( CRHS.type == MM_INT_TYPE ) {
+	retSym.value.intVal  = ~CRHS.value.intVal ;
+      }
+    }
+    retSym.isConstant    = CRHS.isConstant   ;
+    $$.symbol = retRef;
+  } break;
+
+  case '!' : {
+    Symbol & RHS = translator.getSymbol($$.symbol);
+    if( RHS.type != MM_BOOL_TYPE ) {
+      throw syntax_error(@$,"Non boolean expression.");
+    }
+    std::swap($$.trueList,$$.falseList);
+  } break;
   default: throw syntax_error(@$ , "Unknown unary operator.");
   }
-  /* TODO : support logical not `!' and bitwise not `~' */
 } ;
 
 %type <char> unary_operator;
-unary_operator : "&" { $$ = '&'; } |"*" { $$ = '*'; } |"+" { $$ = '+'; } |"-" { $$ = '-'; } ;
+unary_operator : "&" { $$ = '&'; } |"*" { $$ = '*'; } |"~" { $$='~';} |"+" { $$ = '+'; } |"-" { $$ = '-'; }|"!" { $$ = '!'; };
 
 /// Type casting not supported yet...
 %type <Expression> cast_expression;
