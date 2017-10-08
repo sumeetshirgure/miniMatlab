@@ -155,20 +155,11 @@ void mm_translator::printSymbolTable() {
 
 /* Max type */
 DataType mm_translator::maxType(DataType & t1,DataType & t2) {
-  if( t1.isPointer() or t1==MM_VOID_TYPE or t1==MM_FUNC_TYPE )
-    return MM_VOID_TYPE;
-  if( t2.isPointer() or t2==MM_VOID_TYPE or t2==MM_FUNC_TYPE )
-    return MM_VOID_TYPE;
-  
-  if( t1 == MM_DOUBLE_TYPE or t2 == MM_DOUBLE_TYPE )
-    return MM_DOUBLE_TYPE;
-  if( t1 == MM_INT_TYPE or t2 == MM_INT_TYPE )
-    return MM_INT_TYPE;
-  if( t1 == MM_CHAR_TYPE or t2 == MM_CHAR_TYPE )
-    return MM_CHAR_TYPE;
-  if( t1 == MM_BOOL_TYPE or t2 == MM_BOOL_TYPE )
-    return MM_BOOL_TYPE;
-  
+  if( t1.isPointer() or t1==MM_VOID_TYPE or t1==MM_FUNC_TYPE ) return MM_VOID_TYPE;
+  if( t2.isPointer() or t2==MM_VOID_TYPE or t2==MM_FUNC_TYPE ) return MM_VOID_TYPE;
+  if( t1 == MM_DOUBLE_TYPE or t2 == MM_DOUBLE_TYPE ) return MM_DOUBLE_TYPE;
+  if( t1 == MM_INT_TYPE or t2 == MM_INT_TYPE ) return MM_INT_TYPE;
+  if( t1 == MM_CHAR_TYPE or t2 == MM_CHAR_TYPE ) return MM_CHAR_TYPE;
   return MM_VOID_TYPE;
 }
 

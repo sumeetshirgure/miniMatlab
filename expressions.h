@@ -15,10 +15,13 @@ public:
 
   /* Flags if l-value */
   bool isReference;
-  /* Auxiliary symbol to store offsets */
+  /* Auxiliary symbol to store offsets / pointers. */
   SymbolRef auxSymbol;
+
+  /* Flags if this is a boolean expression. */
+  bool isBoolean;
   
-  /// Jump statements corresponding to true/false evaluations
+  /* Jump statements in quadarray corresponding to true/false evaluations */
   AddressList trueList , falseList;
   
   Expression();

@@ -291,17 +291,15 @@ postfix_expression "[" expression "]" "[" expression "]" {
   } else if( lSym.type.isMatrix() ) {
     DataType addressType = MM_INT_TYPE;
     SymbolRef tempRef = translator.genTemp(addressType);
-    SymbolRef temp2Ref = translator.genTemp(addressType);
     Symbol & temp = translator.getSymbol(tempRef);
-    Symbol & temp2 = translator.getSymbol(temp2Ref);
     Symbol & LHS = translator.getSymbol($$.symbol);
     Symbol & rowIndex = translator.getSymbol($3.symbol);
     Symbol & colIndex = translator.getSymbol($6.symbol);
     if( rowIndex.type != MM_INT_TYPE or colIndex.type != MM_INT_TYPE ) {
       throw syntax_error(@$ , "Non-integral index for matrix " + LHS.id + "." );
     }
-    translator.emit(Taco(OP_RXC,temp2.id,LHS.id, std::to_string(SIZE_OF_INT) ));//t2 = m[4] (# of columns)
-    translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,temp2.id));
+    translator.emit(Taco(OP_RXC,temp.id,LHS.id, std::to_string(SIZE_OF_INT) ));//t = m[4] (# of columns)
+    translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,temp.id));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
     translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,std::to_string(2*SIZE_OF_INT)));
@@ -543,6 +541,10 @@ unary_operator unary_expression {
 	throw syntax_error(@2,"Invalid operand.");
       }
       $$.isReference = false;
+    } else {
+      if( rType == MM_VOID_TYPE ) { // allow any rvalue except void type
+	throw syntax_error(@2,"Invalid operand.");
+      }
     }
   } break;
     
@@ -585,47 +587,45 @@ unary_operator unary_expression {
       if( rType.isMatrix() ) {// Dynoge
 	throw syntax_error(@$,"Matrix operations not supported yet.");
       }
-      SymbolRef retRef = translator.genTemp(rType);
-      Symbol & retSymbol = translator.getSymbol(retRef);
       Symbol & RHS = translator.getSymbol($$.symbol);
-      translator.emit(Taco(OP_UMINUS,retSymbol.id,RHS.id));//
+      translator.emit(Taco(OP_UMINUS,RHS.id,RHS.id));//
       if( RHS.isInitialized ) {
-	retSymbol.isInitialized = true;
-	if( rType == MM_CHAR_TYPE ) retSymbol.value.charVal = -RHS.value.charVal;
-	else if( rType == MM_INT_TYPE ) retSymbol.value.intVal = -RHS.value.intVal;
-	else if( rType == MM_DOUBLE_TYPE ) retSymbol.value.doubleVal = -RHS.value.doubleVal;
+	if( rType == MM_CHAR_TYPE ) RHS.value.charVal = -RHS.value.charVal;
+	else if( rType == MM_INT_TYPE ) RHS.value.intVal = -RHS.value.intVal;
+	else if( rType == MM_DOUBLE_TYPE ) RHS.value.doubleVal = -RHS.value.doubleVal;
       }
-      retSymbol.isConstant = RHS.isConstant;
-      $$.symbol = retRef;
     }
   } break;
     
   case '~' : {
     SymbolRef RHR = getIntegerBinaryOperand(translator,*this,@2,$$);
+    SymbolRef retRef ;
     Symbol & RHS = translator.getSymbol(RHR);
-    SymbolRef retRef = translator.genTemp(RHS.type);
+    if( translator.isTemporary(RHR) ) retRef = RHR;
+    else retRef = translator.genTemp(RHS.type);
     Symbol & retSym = translator.getSymbol(retRef);
     Symbol & CRHS = translator.getSymbol(RHR);
     translator.emit(Taco(OP_BIT_NOT,retSym.id,CRHS.id));// ret = ~rhs
     retSym.isInitialized = CRHS.isInitialized;
+    retSym.isConstant    = CRHS.isConstant   ;
     if( retSym.isInitialized ) {
-      if( CRHS.type == MM_CHAR_TYPE ) {
+      if( rType == MM_CHAR_TYPE ) {
 	retSym.value.charVal = ~CRHS.value.charVal;
-      } else if( CRHS.type == MM_INT_TYPE ) {
+      } else if( rType == MM_INT_TYPE ) {
 	retSym.value.intVal  = ~CRHS.value.intVal ;
       }
     }
-    retSym.isConstant    = CRHS.isConstant   ;
     $$.symbol = retRef;
+    $$.isReference = false;
   } break;
 
   case '!' : {
-    Symbol & RHS = translator.getSymbol($$.symbol);
-    if( RHS.type != MM_BOOL_TYPE ) {
-      throw syntax_error(@$,"Non boolean expression.");
+    if( !$$.isBoolean ) {
+      throw syntax_error(@1,"Non boolean expression.");
     }
     std::swap($$.trueList,$$.falseList);
   } break;
+    
   default: throw syntax_error(@$ , "Unknown unary operator.");
   }
 } ;
@@ -698,17 +698,13 @@ logical_AND_expression :
 OR_expression {
   std::swap($$,$1);
 } | logical_AND_expression "&&" instruction_mark OR_expression {
-  Symbol & lSym = translator.getSymbol($1.symbol);
-  if( lSym.type != MM_BOOL_TYPE ) throw syntax_error(@1,"Non boolean operand.");
-  Symbol & rSym = translator.getSymbol($4.symbol);
-  if( rSym.type != MM_BOOL_TYPE ) throw syntax_error(@4,"Non boolean operand.");
+  if( !$1.isBoolean ) throw syntax_error(@1,"Non boolean operand.");
+  if( !$1.isBoolean ) throw syntax_error(@4,"Non boolean operand.");
   translator.patchBack($1.trueList,$3);
   std::swap($$.trueList,$4.trueList);// constant time
   $$.falseList.splice($$.falseList.end(),$1.falseList);
   $$.falseList.splice($$.falseList.end(),$4.falseList);
-  DataType retType = MM_BOOL_TYPE;
-  SymbolRef retRef = translator.genTemp(retType);
-  $$.symbol = retRef;
+  $$.isBoolean = true;
 } ;
 
 %type <Expression> logical_OR_expression;
@@ -716,17 +712,13 @@ logical_OR_expression :
 logical_AND_expression {
   std::swap($$,$1);
 } | logical_OR_expression "||" instruction_mark logical_AND_expression {
-  Symbol & lSym = translator.getSymbol($1.symbol);
-  if( lSym.type != MM_BOOL_TYPE ) throw syntax_error(@1,"Non boolean operand.");
-  Symbol & rSym = translator.getSymbol($4.symbol);
-  if( rSym.type != MM_BOOL_TYPE ) throw syntax_error(@4,"Non boolean operand.");
+  if( !$1.isBoolean ) throw syntax_error(@1,"Non boolean operand.");
+  if( !$4.isBoolean ) throw syntax_error(@4,"Non boolean operand.");
   translator.patchBack($1.falseList,$3);
   std::swap($$.falseList,$4.falseList);// constant time
   $$.trueList.splice($$.trueList.end(),$1.trueList);
   $$.trueList.splice($$.trueList.end(),$4.trueList);
-  DataType retType = MM_BOOL_TYPE;
-  SymbolRef retRef = translator.genTemp(retType);
-  $$.symbol = retRef;
+  $$.isBoolean = true;
 } ;
 
 %type <unsigned int> insert_jump;
@@ -740,12 +732,11 @@ conditional_expression :
 logical_OR_expression {
   std::swap($$,$1);
 } | logical_OR_expression instruction_mark "?" expression insert_jump ":" expression {
-  Symbol & lSym = translator.getSymbol($1.symbol);
-  if( lSym.type != MM_BOOL_TYPE ) throw syntax_error(@1,"Non boolean question.");
+  if( !$1.isBoolean ) throw syntax_error(@1,"Non boolean question.");
   translator.patchBack($1.trueList,$2); // on the mark
   translator.patchBack($1.falseList,$5); // after the jump
   translator.patchBack($5-1,translator.nextInstruction());
-  DataType retType = MM_VOID_TYPE;
+  DataType retType = MM_VOID_TYPE;// generate void dummy to avoid misuse of this expression
   SymbolRef retRef = translator.genTemp(retType);
   $$.symbol = retRef;
 } ;
@@ -1176,8 +1167,7 @@ optional_expression ";" { // patch back all jumps to the next instruction
 %type <AddressList> selection_statement;
 selection_statement :
 "if" "(" expression ")" instruction_mark statement {
-  Symbol & boolExp = translator.getSymbol($3.symbol);
-  if( boolExp.type != MM_BOOL_TYPE ) {
+  if( !$3.isBoolean ) {
     throw syntax_error(@3,"Not a boolean expression.");
   }
   translator.patchBack($3.trueList,$5);
@@ -1186,8 +1176,7 @@ selection_statement :
 }
 |
 "if" "(" expression ")" instruction_mark statement "else" insert_jump statement {
-  Symbol & boolExp = translator.getSymbol($3.symbol);
-  if( boolExp.type != MM_BOOL_TYPE ) {
+  if( !$3.isBoolean ) {
     throw syntax_error(@3,"Not a boolean expression.");
   }
   translator.patchBack($3.trueList,$5);
@@ -1200,8 +1189,7 @@ selection_statement :
 %type <AddressList> iteration_statement;
 iteration_statement :
 "while" "(" instruction_mark expression ")" instruction_mark statement {
-  Symbol & boolExp = translator.getSymbol($4.symbol);
-  if( boolExp.type != MM_BOOL_TYPE ) {
+  if( !$4.isBoolean ) {
     throw syntax_error(@4,"Not a boolean expression.");
   }
   unsigned int loopInstruction = translator.nextInstruction();
@@ -1213,8 +1201,7 @@ iteration_statement :
 }
 |
 "do" instruction_mark statement "while" "(" instruction_mark expression ")" ";" {
-  Symbol & boolExp = translator.getSymbol($7.symbol);
-  if( boolExp.type != MM_BOOL_TYPE ) {
+  if( !$7.isBoolean ) {
     throw syntax_error(@7,"Not a boolean expression.");
   }
   translator.patchBack($7.trueList,$2); // primary loop
@@ -1227,8 +1214,7 @@ optional_expression ";"              // initializer expression
 instruction_mark expression ";"      // nonempty invariant expression
 instruction_mark optional_expression // variant expression
 ")" instruction_mark statement {
-  Symbol & boolExp = translator.getSymbol($6.symbol);
-  if( boolExp.type != MM_BOOL_TYPE ) {
+  if( !$6.isBoolean ) {
     throw syntax_error(@6,"Not a boolean expression.");
   }
   unsigned int loopInstruction = translator.nextInstruction();
@@ -1461,9 +1447,15 @@ void emitScalarBinaryOperation(char opChar ,
   if( retType == MM_VOID_TYPE ) {
     parser.error(loc , "Invalid operands." );
   }
+  
   LHR = typeCheck(LHR,retType,true,translator,parser,lLoc);
   RHR = typeCheck(RHR,retType,true,translator,parser,rLoc);
-  SymbolRef retRef = translator.genTemp(retType);
+  
+  SymbolRef retRef;
+  bool lTemp = translator.isTemporary(LHR) , rTemp = translator.isTemporary(RHR);
+  if( !lTemp and !rTemp ) { retRef = translator.genTemp(retType); }//generate new
+  else { if( lTemp ) retRef = LHR;else retRef = RHR; }
+  
   Symbol & retSymbol = translator.getSymbol(retRef);
   Symbol & CLHS = translator.getSymbol(LHR);
   Symbol & CRHS = translator.getSymbol(RHR);
@@ -1537,7 +1529,12 @@ void emitIntegerBinaryOperation(char opChar,
   }
   LHR = typeCheck(LHR,retType,true,translator,parser,lLoc);
   RHR = typeCheck(RHR,retType,true,translator,parser,rLoc);
-  SymbolRef retRef = translator.genTemp(retType);
+
+  SymbolRef retRef;
+  bool lTemp = translator.isTemporary(LHR) , rTemp = translator.isTemporary(RHR);
+  if( !lTemp and !rTemp ) { retRef = translator.genTemp(retType); }//generate new
+  else { if( lTemp ) retRef = LHR;else retRef = RHR; }
+  
   Symbol & retSymbol = translator.getSymbol(retRef);
   Symbol & CLHS = translator.getSymbol(LHR);
   Symbol & CRHS = translator.getSymbol(RHR);
@@ -1610,12 +1607,9 @@ void emitConditionOperation(char opChar,
   }
   LHR = typeCheck(LHR,commonType,true,translator,parser,lLoc);
   RHR = typeCheck(RHR,commonType,true,translator,parser,rLoc);
-  DataType retType = MM_BOOL_TYPE;
-  SymbolRef retRef = translator.genTemp(retType);
-  Symbol & retSymbol = translator.getSymbol(retRef);
   Symbol & CLHS = translator.getSymbol(LHR);
   Symbol & CRHS = translator.getSymbol(RHR);
-  retExp.symbol = retRef;
+  retExp.isBoolean = true;
   retExp.trueList.push_back(translator.nextInstruction());
   switch( opChar ){
   case '<': translator.emit(Taco(OP_LT,"",CLHS.id,CRHS.id)); break;

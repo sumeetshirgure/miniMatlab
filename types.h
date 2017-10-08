@@ -13,15 +13,13 @@ const unsigned int SIZE_OF_DOUBLE = 8;
 /**
    Class for defining data types and their reference level.
    (rows , cols) are also used to refer to basic datatypes :
-     (0,0) : Matrix_0 (implicit)
-     (*,0) : Matrix_1 (implicit)
-     (*,*) : Matrix
+     (0,0) : Matrix
+     (*,*) : Matrix (static)
      (0,1) : void
-     (0,2) : Bool (implicit)
-     (0,3) : char
-     (0,4) : int
-     (0,5) : double
-     (0,6) : function type (for symbol table)
+     (0,2) : char
+     (0,3) : int
+     (0,4) : double
+     (0,5) : function type (for symbol table)
 */
 class DataType {
 public:
@@ -52,6 +50,7 @@ public:
   
   /* Checks if type is a static matrix */
   bool isStaticMatrix();
+  
   /* Checks if type is a matrix */
   bool isMatrix();
   
@@ -65,11 +64,10 @@ std::ostream& operator << (std::ostream&,const DataType &);
 /* Basic datatype constants */
 const DataType MM_MATRIX_TYPE  (0,0,0);
 const DataType MM_VOID_TYPE    (0,0,1);
-const DataType MM_BOOL_TYPE    (0,0,2); // implicit
-const DataType MM_CHAR_TYPE    (0,0,3);
-const DataType MM_INT_TYPE     (0,0,4);
-const DataType MM_DOUBLE_TYPE  (0,0,5);
-const DataType MM_FUNC_TYPE    (0,0,6);
+const DataType MM_CHAR_TYPE    (0,0,2);
+const DataType MM_INT_TYPE     (0,0,3);
+const DataType MM_DOUBLE_TYPE  (0,0,4);
+const DataType MM_FUNC_TYPE    (0,0,5);
 
 
 #endif /* ! MM_TYPES_H */
