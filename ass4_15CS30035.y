@@ -1267,10 +1267,16 @@ iteration_statement :
   std::swap($$,$7.falseList); // terminate
 }
 |
+/* Declaration inside for is not supported */
 "for" "("
 optional_expression ";"              // initializer expression
 instruction_mark expression ";"      // nonempty invariant expression
 instruction_mark optional_expression // variant expression
+{
+  unsigned int loopInstruction = translator.nextInstruction();
+  translator.emit(Taco(OP_GOTO));
+  translator.patchBack(loopInstruction,$5); // jump to evaluation of invariant
+}
 ")" instruction_mark statement {
   if( !$6.isBoolean ) {
     throw syntax_error(@6,"Not a boolean expression.");
@@ -1278,21 +1284,19 @@ instruction_mark optional_expression // variant expression
   unsigned int loopInstruction = translator.nextInstruction();
   translator.emit(Taco(OP_GOTO));
   
-  translator.patchBack(loopInstruction,$5); // primary loop
-  translator.patchBack($12,$5); // shortcut loop
+  translator.patchBack(loopInstruction,$8); // primary loop
+  translator.patchBack($13,$8); // shortcut loop
   
-  translator.patchBack($3.trueList,$5); //
-  translator.patchBack($3.falseList,$5); // link totally
+  translator.patchBack($3.trueList,$5);
+  translator.patchBack($3.falseList,$5);// link totally
   
-  translator.patchBack($6.trueList,$8); // iterate
+  translator.patchBack($6.trueList,$12); // iterate
 
-  translator.patchBack($9.trueList,$11); //
-  translator.patchBack($9.falseList,$11); // link totally
+  translator.patchBack($9.trueList,$5); //
+  translator.patchBack($9.falseList,$5); // link totally
   
   std::swap($$,$6.falseList); // terminate
-}
-/* Declaration inside for is not supported */
-;
+} ;
 
 %type <AddressList> jump_statement;
 jump_statement :
