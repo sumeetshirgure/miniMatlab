@@ -100,20 +100,26 @@ Symbol & mm_translator::getSymbol(SymbolRef ref) {
 
 // returns if expression is a programmer written symbol reference
 bool mm_translator::isSimpleReference(Expression & expr) {
-  return expr.symbol == expr.auxSymbol;
-};
-  
+  return expr.isReference and expr.symbol == expr.auxSymbol;
+}
+
 // returns if expression points to some address
 bool mm_translator::isPointerReference(Expression &expr) {
   DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
   baseType.pointers++;
-  return baseType == auxType;
-};
-  
+  return expr.isReference and baseType == auxType;
+}
+
 // returns if expression refers to some element of some matrix
 bool mm_translator::isMatrixReference(Expression &expr) {
   DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
-  return baseType.isMatrix() and (auxType == MM_INT_TYPE);
+  return expr.isReference and baseType.isMatrix() and (auxType == MM_INT_TYPE);
+}
+
+// returns if expression refers to some matrix
+bool mm_translator::isMatrixOperand(Expression &expr) {
+  DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
+  return baseType.isMatrix() and ( !expr.isReference or auxType != MM_INT_TYPE);
 }
 
 SymbolRef mm_translator::genTemp(DataType & type) {

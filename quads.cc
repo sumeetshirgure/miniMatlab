@@ -37,15 +37,17 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_FUNC_END:return out<<"function "<<taco.z<<" ends";
 
   case OP_REFER:return out<<taco.z<<" = & "<<taco.x;
-  case OP_L_DEREF:return out<<"*"<<taco.z<<" = "<<taco.x;
+  case OP_L_DEREF:return out<<"* "<<taco.z<<" = "<<taco.x;
   case OP_R_DEREF:return out<<taco.z<<" = * "<<taco.x;
 
   case OP_LXC:return out<<taco.z<<" [ "<<taco.x<<" ] = "<<taco.y;
   case OP_RXC:return out<<taco.z<<" = "<<taco.x<<" [ "<<taco.y<<" ]";
 
-  case OP_CONV_TO_CHAR : return out<<taco.z<<" = toChar("<<taco.x<<")";
-  case OP_CONV_TO_INT : return out<<taco.z<<" = toInt("<<taco.x<<")";
-  case OP_CONV_TO_DOUBLE : return out<<taco.z<<" = toDouble("<<taco.x<<")";
+  case OP_CONV_TO_CHAR : return out<<taco.z<<" = toChar( "<<taco.x<<" )";
+  case OP_CONV_TO_INT : return out<<taco.z<<" = toInt( "<<taco.x<<" )";
+  case OP_CONV_TO_DOUBLE : return out<<taco.z<<" = toDouble( "<<taco.x<<" )";
+
+  case OP_TRANSPOSE : return out<<taco.z<<" = "<<taco.x<<".'";
   default : break;
   }
   return out;

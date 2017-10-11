@@ -47,14 +47,17 @@ enum OpCode {
   
   OP_REFER,     // z = &x
   OP_L_DEREF,   // *z = x
-  OP_R_DEREF,  // z = *x
+  OP_R_DEREF,   // z = *x
   OP_LXC,       // left indexed copy : a[b] = c
   OP_RXC,       // a = b[c]
   
   OP_CONV_TO_CHAR  , // z = (char) x
   OP_CONV_TO_INT   , // z = (int) x
   OP_CONV_TO_DOUBLE, // z = (double) x
+  
+  OP_TRANSPOSE  // z = transpose(x) , where z and x point to a block of same size
 };
+
 
 // Saw the opportunity and took it.
 class Taco {

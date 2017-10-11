@@ -70,6 +70,8 @@ public:
   bool isPointerReference(Expression &);
   // returns if expression refers to some element of some matrix
   bool isMatrixReference(Expression &);
+  // returns if expression refers to some matrix
+  bool isMatrixOperand(Expression &);
   
   // generate a temporary and store it in the current table.
   // return the generated symbol's reference

@@ -29,7 +29,6 @@ std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
   else if( symbol.symType == TEMP ) out << "temp" ;
   else if( symbol.symType == RETVAL ) out << "retval" ;
   else if( symbol.symType == PARAM ) out << "param" ;
-  else if( symbol.symType == LINK ) out << "link" ;
   else out << "---" ;
   out << "\t\t" << symbol.type.getSize() << "\t\t" << symbol.offset << "\t\t" << symbol.child ;
   return out;

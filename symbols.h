@@ -24,7 +24,6 @@ enum SymbolType {
   TEMP ,      // compiler generated temporary
   RETVAL ,    // first symbol of a function's symbol table
   PARAM ,     // parameter type symbol
-  LINK        // link to dynamically allocated memory
 };
 
 /* Definition of an entry in a symbol table */
