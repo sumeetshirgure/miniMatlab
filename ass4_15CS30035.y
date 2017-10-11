@@ -883,7 +883,14 @@ logical_OR_expression {
   if( !$1.isBoolean ) throw syntax_error(@1,"Non boolean question.");
   translator.patchBack($1.trueList,$2); // on the mark
   translator.patchBack($1.falseList,$5); // after the jump
-  translator.patchBack($5-1,translator.nextInstruction());
+  int nextInstruction = translator.nextInstruction();
+  translator.patchBack($5-1,nextInstruction);
+  
+  translator.patchBack($4.trueList,nextInstruction);
+  translator.patchBack($4.falseList,nextInstruction);// link totally
+  
+  translator.patchBack($7.trueList,translator.nextInstruction());
+  translator.patchBack($7.falseList,translator.nextInstruction());// link totally
   DataType retType = MM_VOID_TYPE;// generate void dummy to avoid misuse of this expression
   SymbolRef retRef = translator.genTemp(retType);
   $$.symbol = retRef;
