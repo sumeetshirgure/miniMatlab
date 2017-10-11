@@ -84,6 +84,17 @@
 			      const yy::location &,
 			      const yy::location &,
 			      const yy::location & );
+
+  /* Dereference any pointer / matrix element */
+  void dereference(mm_translator &,Expression &);
+  
+  /* Emit opcodes to call a function after creating appropriate temporaries. */
+  void callFunction(mm_translator &,
+		    yy::mm_parser &,
+		    yy::location &,
+		    Expression &,
+		    unsigned int ,//table id of the function
+		    std::vector<Expression> &);
  }
 
 /* Enable bison location tracking */
@@ -300,7 +311,12 @@ postfix_expression "[" expression "]" "[" expression "]" {
 } |
 /* Function call */
 postfix_expression "(" optional_argument_list ")" {
-  throw syntax_error(@$,"TODO.");
+  Symbol & fSym = translator.getSymbol($1.symbol);
+  if( fSym.type != MM_FUNC_TYPE ) {
+    throw syntax_error(@1,"Not a function.");
+  }
+  callFunction(translator,*this,@$,$$,fSym.child,$3);
+  
 } |
 postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
   std::swap($$,$1);
@@ -387,7 +403,13 @@ inc_dec_op : "++" { $$ = '+'; } | "--" { $$ = '-'; } ;
 
 %type < std::vector<Expression> > optional_argument_list argument_list;
 optional_argument_list : %empty { } | argument_list { std::swap($$,$1); } ;
-argument_list : expression { $$.push_back($1); } | argument_list "," expression { swap($$,$1); $$.push_back($3); } ;
+argument_list :
+expression { $$.push_back($1); } |
+argument_list "," expression {
+  std::swap($$,$1);
+  dereference(translator,$3);
+  $$.push_back($3);
+} ;
 
 %type <Expression> unary_expression;
 unary_expression : postfix_expression { std::swap($$,$1); } |
@@ -558,7 +580,7 @@ unary_operator unary_expression {
 	  translator.emit(Taco(OP_UMINUS,retSym.id,matSym.id));// ret = -m
 	  $$.symbol = retRef;
 	  $$.isReference = false;
-	} else if( rType == MM_CHAR_TYPE or rType == MM_CHAR_TYPE or rType == MM_CHAR_TYPE ) {
+	} else if( rType == MM_CHAR_TYPE or rType == MM_INT_TYPE or rType == MM_DOUBLE_TYPE ) {
 	  SymbolRef retRef = translator.genTemp(rType);
 	  Symbol & retSymbol = translator.getSymbol(retRef);
 	  Symbol & RHS = translator.getSymbol($$.symbol);
@@ -1351,9 +1373,9 @@ iteration_statement :
 } |
 /* Declaration inside for is not supported */
 "for" "("
-optional_expression ";"              // initializer expression
-instruction_mark expression ";"      // nonempty invariant expression
-instruction_mark optional_expression // variant expression
+optional_expression ";"              // Initializer expression
+instruction_mark expression ";"      // Nonempty invariant expression ; nonempty since `break' isn't supported.
+instruction_mark optional_expression // Iteration expression.
 {
   unsigned int loopInstruction = translator.nextInstruction();
   translator.emit(Taco(OP_GOTO));
@@ -1382,10 +1404,30 @@ instruction_mark optional_expression // variant expression
 
 %type <AddressList> jump_statement;
 jump_statement :
-"return" optional_expression ";" {
-  
-}
-;
+"return" ";" {
+  unsigned int currEnv = translator.currentEnvironment() ;
+  unsigned int parent = translator.tables[currEnv].parent ;
+  while( parent != 0 ) {
+    currEnv = parent ; parent = translator.tables[currEnv].parent ;
+  }
+  if( translator.tables[currEnv].table[0].type != MM_VOID_TYPE ) {
+    throw syntax_error(@$,"Non-void function returning nothing.");
+  }
+  translator.emit(Taco(OP_RETURN));
+} |
+"return" expression ";" {
+  dereference(translator,$2);
+  unsigned int currEnv = translator.currentEnvironment() ;
+  unsigned int parent = translator.tables[currEnv].parent ;
+  while( parent != 0 ) {
+    currEnv = parent ; parent = translator.tables[currEnv].parent ;
+  }
+  Symbol & retSym = translator.getSymbol($2.symbol);
+  if( translator.tables[currEnv].table[0].type != retSym.type ) {
+    throw syntax_error(@$,"Return type mismatch.");
+  }
+  translator.emit(Taco(OP_RETURN,retSym.id));
+} ;
 
 %type <Expression> optional_expression;
 optional_expression : %empty { } | expression { std::swap($$,$1); } ;
@@ -1765,6 +1807,48 @@ void emitConditionOperation(char opChar,
   }
   retExp.falseList.push_back(translator.nextInstruction());
   translator.emit(Taco(OP_GOTO,""));
+}
+
+void dereference(mm_translator &translator,Expression &expr) {
+  if( expr.isReference ) {
+    if( translator.isMatrixReference(expr) ) {
+      DataType retType = MM_DOUBLE_TYPE;
+      SymbolRef argRef = translator.genTemp(retType);
+      SymbolRef auxRef = expr.auxSymbol;
+      SymbolRef baseRef = expr.symbol;
+      Symbol & auxSym = translator.getSymbol(auxRef);
+      Symbol & baseSym = translator.getSymbol(baseRef);
+      Symbol & retSym = translator.getSymbol(argRef);
+      translator.emit(Taco(OP_RXC,retSym.id,baseSym.id,auxSym.id));
+      expr.symbol = argRef;
+    }
+    expr.isReference = false;
+  }
+}
+
+void callFunction(mm_translator &translator,
+		  yy::mm_parser &parser,
+		  yy::location &loc,
+		  Expression & retExpr,
+		  unsigned int tableId,
+		  std::vector<Expression> & argList
+		  ) {
+  if(argList.size() != translator.tables[tableId].params) {
+    parser.error(loc,"Incorrect argument count.");
+  }
+  for(unsigned int i=1;i<=argList.size();i++) {
+    Symbol & argument = translator.getSymbol(argList[i-1].symbol);
+    if( translator.tables[tableId].table[i].type != argument.type ) {
+      parser.error(loc,"Incorrect argument types.");
+    }
+    translator.emit(Taco(OP_PARAM,argument.id));
+  }
+  DataType retType = translator.tables[tableId].table[0].type;
+  SymbolRef retRef = translator.genTemp(retType);
+  Symbol & retSym = translator.getSymbol(retRef);
+  translator.emit(Taco(OP_CALL,retSym.id,translator.tables[tableId].name,std::to_string(argList.size())));
+  retExpr.symbol = retRef;
+  retExpr.isReference = false;
 }
 
 /****************************************************************************************************/
