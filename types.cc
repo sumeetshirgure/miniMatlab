@@ -47,20 +47,20 @@ bool DataType::isIllegalDecalaration() {
 }
 
 std::ostream & operator << (std::ostream & out , const DataType & type) {
+  std::string output;
   if( type.rows == 0 ){
     switch ( type.cols ) {
-    case 0: out << "Mtrx";   break;
-    case 1: out << "void";   break;
-    case 2: out << "char";   break;
-    case 3: out << "int";    break;
-    case 4: out << "dbl";    break;
-    case 5: out << "fnct";   break;
-    default: out << " ! Unknown type "; break;
+    case 0: output = "Matrix";   break;
+    case 1: output = "void";   break;
+    case 2: output = "char";   break;
+    case 3: output = "int";    break;
+    case 4: output = "double";    break;
+    case 5: output = "fnct";   break;
+    default: out << "Unknown type!"; break;
     }
   } else {
-    out << "M(" << type.rows << "," << type.cols << ")";
+    output = "M(" + std::to_string(type.rows) + "," + std::to_string(type.cols) + ")";
   }
-  for( int level = 0; level < type.pointers ; level++ )
-    out << '*';
-  return out;
+  for( int level = 0; level < type.pointers ; level++ ) output += '*';
+  return out << output;
 }

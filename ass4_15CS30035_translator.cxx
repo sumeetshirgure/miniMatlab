@@ -1,18 +1,30 @@
 #include "ass4_15CS30035_translator.h"
 #include "ass4_15CS30035.tab.hh"
+#include <iomanip>
 
 /* Constructor for translator */
-mm_translator::mm_translator() :
-  trace_scan(false) , trace_parse(false) , trace_tacos(false) {
-
+mm_translator::mm_translator(const std::string &_file) :
+  trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) {
+  int len = file.length();
+  if( file == "-" ) { // scanning from stdin
+    fout.open("mm.out");
+  } else if( len < 3 or file[len-3] != '.' or file[len-2] != 'm' or file[len-1] != 'm' ) {
+    std::cerr << "Fatal error : " << _file << " : Not a .mm file" << std::endl; // lol
+    throw 1;
+  } else {
+    std::string outFileName = file.substr(0,file.length()-3) + ".out";
+    fout = std::ofstream(outFileName);
+  }
   parameterDeclaration = false;
   temporaryCount = 0; // initialize tempCount to 0  
-  newEnvironment("globalTable"); // initialize global table
+  newEnvironment("gST"); // initialize global table
+  scopePrefix = "::";
   globalTable().parent = 0;
 }
 
 /* Destructor for translator */
 mm_translator::~mm_translator() {
+  fout.close();
   tables.clear();
   while( not environment.empty() ) environment.pop();
 }
@@ -23,7 +35,6 @@ mm_translator::~mm_translator() {
  * Returns 0 if translation completes succesfully.
  */
 int mm_translator::translate(const std::string & _file) {
-  file = _file;
   
   if( begin_scan() != 0 ) {
     end_scan();
@@ -63,7 +74,7 @@ void mm_translator::emit (const Taco & taco) {
 
 void mm_translator::printQuadArray () {
   for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
-    std::cout << idx << "\t" << quadArray[idx] << std::endl;
+    fout << std::setw(5) << idx << "\t\t" << quadArray[idx] << std::endl;
   }
 }
 
@@ -79,6 +90,7 @@ unsigned int mm_translator::newEnvironment(const std::string &name="") {
   unsigned int idx = tables.size();
   environment.push(idx);// push the address to new symbol table
   tables.push_back(SymbolTable(idx,name));
+  scopePrefix += name + "::";
   return idx;
 }
 
@@ -90,7 +102,15 @@ SymbolTable & mm_translator::currentTable() {
   return tables[environment.top()];
 }
 
+void mm_translator::pushEnvironment(unsigned int envId) {
+  environment.push(envId);
+  std::string name = currentTable().name;
+  scopePrefix += name + "::";
+}
+
 void mm_translator::popEnvironment() {
+  unsigned int curLength = currentTable().name.length();
+  scopePrefix = scopePrefix.substr(0,scopePrefix.length() - curLength - 2);
   environment.pop();
 }
 
@@ -155,7 +175,7 @@ void mm_translator::updateSymbolTable(unsigned int tableId) {
 /* Print the entire symbol table */
 void mm_translator::printSymbolTable() {
   for( int i = 0; i < tables.size() ; i++ ) {
-    std::cout << tables[i] << std::endl;
+    fout << tables[i] << std::endl;
   }
 }
 
@@ -184,6 +204,13 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
   }
 }
 
+
+void mm_translator::postProcess() {
+  for(unsigned int idx = 0; idx < tables.size() ; idx++ )
+    updateSymbolTable(idx);
+}
+
+
 /* Main translation driver */
 int main( int argc , char * argv[] ){
   using namespace std ;
@@ -204,22 +231,35 @@ int main( int argc , char * argv[] ){
     } else if(cmd == "--trace-tacos") {
       trace_tacos = true;      
     } else {
-      mm_translator translator;
-      translator.trace_parse = trace_parse;
-      translator.trace_scan = trace_scan;
-      translator.trace_tacos = trace_tacos;
-      int result = translator.translate(cmd);
-      if(result != 0) cout << cmd << " : Translation failed" << endl;
-      else {
-	cout << cmd << " : Translated code :" << endl;
-	cout << "3 Address codes :" << endl;
-	translator.printQuadArray();
-	for(int i=0;i<100;i++)cout<<'-';cout << endl;
-	cout << endl << "Symbol tables : " << endl;
-	translator.printSymbolTable();
-	cout << cmd << " : Translation completed successfully " << endl;
-	for(int i=0;i<100;i++)cout<<'*';cout << endl;
-      }
+      int result;
+      try {
+	mm_translator translator(cmd);
+	translator.trace_parse = trace_parse;
+	translator.trace_scan = trace_scan;
+	translator.trace_tacos = trace_tacos;
+	
+	result = translator.translate(cmd);
+	
+	if(result != 0) cerr << cmd << " : Translation failed" << endl;
+	else {
+	  translator.fout << cmd << " : Translated code :" << endl;
+	  translator.fout << "3 Address codes :" << endl;
+	  translator.printQuadArray();
+	  
+	  translator.fout << endl;
+	  for(int i=0;i<100;i++)translator.fout<<'-';
+	  
+	  translator.fout << endl;
+	  translator.fout << endl << "Symbol tables : " << endl;
+	  translator.printSymbolTable();
+	  
+	  for(int i=0;i<100;i++)translator.fout<<'*';
+	  translator.fout << endl;
+	  
+	  cout << cmd << " : Translation completed successfully " << endl;
+	}
+      } catch ( ... ) { } // "fatal" errors
+      
     }
   }
   

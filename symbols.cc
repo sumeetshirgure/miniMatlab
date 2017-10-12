@@ -1,4 +1,5 @@
 #include "symbols.h"
+#include <iomanip>
 
 Symbol::Symbol ( ) :
   id(""),type(MM_VOID_TYPE),symType(LOCAL),offset(0),isInitialized(false),isConstant(false),child(0) { }
@@ -18,19 +19,26 @@ Symbol::Symbol (const std::string & _id, const DataType & _type, const SymbolTyp
 Symbol::~Symbol () { }
 
 std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
-  out << symbol.id << "\t\t" << symbol.type << "\t\t";
+  out << std::setw(30) << symbol.id
+      << std::setw(15) << symbol.type ;
+  out << std::setw(10);
   if( !symbol.isInitialized ) out << "NULL" ;
   else if( symbol.type == MM_CHAR_TYPE ) out << (int)symbol.value.charVal ;
   else if( symbol.type == MM_INT_TYPE) out << symbol.value.intVal ;
   else if( symbol.type == MM_DOUBLE_TYPE) out << symbol.value.doubleVal ;
-  else out << "---" ;
-  out << "\t\t";
+  else out << "-----" ;
+  
+  out << std::setw(10);
   if( symbol.symType == LOCAL ) out << "local" ;
   else if( symbol.symType == TEMP ) out << "temp" ;
   else if( symbol.symType == RETVAL ) out << "retval" ;
   else if( symbol.symType == PARAM ) out << "param" ;
-  else out << "---" ;
-  out << "\t\t" << symbol.type.getSize() << "\t\t" << symbol.offset << "\t\t" << symbol.child ;
+  else if( symbol.symType == CONST ) out << "const" ;
+  else out << "-----" ;
+  
+  out << std::setw(10) << symbol.type.getSize()
+      << std::setw(10) << symbol.offset
+      << std::setw(10) << symbol.child ;
   return out;
 }
 
@@ -39,7 +47,7 @@ std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
       << " , parent = #" << symbolTable.parent
       << " , paramCount = " << symbolTable.params << std::endl;
   for( int idx = 0; idx < symbolTable.table.size() ; idx++ ) {
-    std::cout << symbolTable.table[idx] << std::endl;
+    out << symbolTable.table[idx] << std::endl;
   }
   return out;
 }

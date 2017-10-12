@@ -3,6 +3,7 @@
 
 #include <string>
 #include <stack>
+#include <fstream>
 
 /* For determining return type of yylex */
 #include "ass4_15CS30035.tab.hh"
@@ -29,7 +30,7 @@ YY_DECL;
 class mm_translator {
 public:
   
-  mm_translator();
+  mm_translator(const std::string &);
   virtual ~mm_translator();
   
   // scanner handlers
@@ -41,6 +42,9 @@ public:
   int translate (const std::string&);
   std::string file;
   bool trace_parse;
+
+  // output stream
+  std::ofstream fout;
   
   // error handlers
   void error(const yy::location&,const std::string&);
@@ -95,9 +99,11 @@ public:
 
   // Symbol table management
   /* Pushes a new environment and returns a pointer to it */
+  std::string scopePrefix;
   unsigned int newEnvironment(const std::string&);
   unsigned int currentEnvironment();
   SymbolTable & currentTable();
+  void pushEnvironment(unsigned int);
   void popEnvironment();
   
   /* DataType of the object/method being declared currently */
@@ -114,6 +120,11 @@ public:
      If either is void or function or pointer : returns void.
   */
   static DataType maxType( DataType & , DataType & );
+
+
+  /* Calculates the offsets of all symbol tables. 
+     Any postprocessing in the future can be done here. */
+  void postProcess();
   
 };
 
