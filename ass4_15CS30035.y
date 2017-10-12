@@ -201,7 +201,7 @@ IDENTIFIER {
   std::string curPrefix = translator.scopePrefix;
   unsigned int scope = translator.currentEnvironment();
   bool found = false;
-  for( ; scope != 0 ; ) {
+  for( ; ; ) {
     try {
       $$.symbol.second = translator.tables[scope].lookup( std::string(curPrefix + $1) );
       $$.symbol.first = scope;
@@ -1076,9 +1076,8 @@ declarator :
 optional_pointer direct_declarator {
   $$ = $2;
   Symbol & symbol = translator.getSymbol($$);
-  /* TODO : If it is a function declaration in a global scope let it pass. */
   if( translator.currentEnvironment() == 0 and symbol.type == MM_FUNC_TYPE ) {
-    throw syntax_error( @$ , "Function declaration not supported yet." );
+    // Except global function declaration.
   } else if( symbol.type.isIllegalDecalaration() ) {
     throw syntax_error( @$ , "Invalid type for declaration." );
   }
@@ -1149,7 +1148,7 @@ IDENTIFIER "(" {
     SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
     $$ = std::make_pair(translator.currentEnvironment()
-			,outerTable.lookup($1,symbolType,SymbolType::LOCAL));
+			,outerTable.lookup(std::string("::")+$1,symbolType,SymbolType::LOCAL));
     Symbol & newSymbol = translator.getSymbol($$);
     newSymbol.child = currEnv;
   } catch ( ... ) {/* Already declared in current scope */
