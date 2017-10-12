@@ -1845,7 +1845,9 @@ void callFunction(mm_translator &translator,
   }
   for(unsigned int i=1;i<=argList.size();i++) {
     Symbol & argument = translator.getSymbol(argList[i-1].symbol);
-    if( translator.tables[tableId].table[i].type != argument.type ) {
+    DataType reqType = translator.tables[tableId].table[i].type;
+    
+    if( reqType != argument.type and !(reqType == MM_MATRIX_TYPE and argument.type.isMatrix() ) ) {
       parser.error(loc,"Incorrect argument types.");
     }
     translator.emit(Taco(OP_PARAM,argument.id));

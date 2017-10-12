@@ -2,7 +2,7 @@ translator_defns = ass4_15CS30035_translator.cxx quads.cc types.cc symbols.cc ex
 parser_defn = ass4_15CS30035.tab.cc
 scanner_defn = lex.yy.c
 FILES = $(translator_defns) $(parser_defn) $(scanner_defn)
-FLAGS = -std=c++11 #-O2 -g
+FLAGS = -std=c++11 -O2 #-g
 
 all : build clean
 
