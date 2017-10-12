@@ -198,21 +198,21 @@ COMMA ","
 %type <Expression> primary_expression;
 primary_expression :
 IDENTIFIER {
-  int scope = translator.currentEnvironment();
+  std::string curPrefix = translator.scopePrefix;
+  unsigned int scope = translator.currentEnvironment();
   bool found = false;
-  for( ; scope != 0 ; scope = translator.tables[scope].parent ) {
+  for( ; scope != 0 ; ) {
     try {
-      $$.symbol.second = translator.tables[scope].lookup($1);
+      $$.symbol.second = translator.tables[scope].lookup( std::string(curPrefix + $1) );
       $$.symbol.first = scope;
       found = true;
     } catch ( ... ) {
     }
-  }
-  try {
-    $$.symbol.second = translator.tables[0].lookup($1);
-    $$.symbol.first = scope;
-    found = true;
-  } catch ( ... ) {
+    unsigned int parent = translator.tables[scope].parent;
+    if( found or parent == scope ) break; // global scope
+    unsigned int curLength = translator.tables[scope].name.length();
+    curPrefix = curPrefix.substr(0,curPrefix.length() - curLength - 2);
+    scope = parent;
   }
   if(not found) {
     throw syntax_error(@$ , "Identifier :"+$1+" not declared in scope.") ;
@@ -223,6 +223,7 @@ IDENTIFIER {
   DataType intType = MM_INT_TYPE;
   SymbolRef ref = translator.genTemp(intType);
   Symbol & temp = translator.getSymbol(ref);
+  temp.symType = SymbolType::CONST;
   temp.value.intVal = $1;
   temp.isInitialized = true;
   temp.isConstant = true;
@@ -232,6 +233,7 @@ IDENTIFIER {
   DataType doubleType = MM_DOUBLE_TYPE;
   SymbolRef ref = translator.genTemp(doubleType);
   Symbol & temp = translator.getSymbol(ref);
+  temp.symType = SymbolType::CONST;
   temp.value.doubleVal = $1;
   temp.isInitialized = true;
   temp.isConstant = true;
@@ -241,6 +243,7 @@ IDENTIFIER {
   DataType charType = MM_CHAR_TYPE;
   SymbolRef ref = translator.genTemp(charType);
   Symbol & temp = translator.getSymbol(ref);
+  temp.symType = SymbolType::CONST;
   temp.value.charVal = $1;
   temp.isInitialized = true;
   temp.isConstant = true;
@@ -251,6 +254,7 @@ IDENTIFIER {
   charPointerType.pointers++;
   SymbolRef ref = translator.genTemp(charPointerType);
   Symbol & temp = translator.getSymbol(ref);
+  temp.symType = SymbolType::CONST;
   $$.symbol = ref;
 } | "(" expression ")" {
   std::swap($$,$2);
@@ -1078,7 +1082,6 @@ optional_pointer direct_declarator {
   } else if( symbol.type.isIllegalDecalaration() ) {
     throw syntax_error( @$ , "Invalid type for declaration." );
   }
-  translator.updateSymbolTable($2.first);
   translator.typeContext.top().pointers -= $1;
 } ;
 
@@ -1096,16 +1099,17 @@ optional_pointer "*" {
 direct_declarator :
 /* Variable declaration */
 IDENTIFIER {
+  std::string id = translator.scopePrefix + $1;
   try {
     // create a new symbol in current scope
     DataType &  curType = translator.typeContext.top() ;
     SymbolTable & table = translator.currentTable();
     if(translator.parameterDeclaration) {
-      $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::PARAM));
+      $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::PARAM));
     } else if( curType == MM_MATRIX_TYPE ) {
       throw syntax_error(@$,"Matrix declaration without dimensions not allowed.");
     } else {
-      $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));
+      $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::LOCAL));
     }
   } catch ( syntax_error e ) {
     throw e;
@@ -1144,7 +1148,8 @@ IDENTIFIER "(" {
   try {
     SymbolTable & outerTable = translator.currentTable();
     DataType symbolType = MM_FUNC_TYPE ;
-    $$ = std::make_pair(translator.currentEnvironment() ,outerTable.lookup($1,symbolType,SymbolType::LOCAL));
+    $$ = std::make_pair(translator.currentEnvironment()
+			,outerTable.lookup($1,symbolType,SymbolType::LOCAL));
     Symbol & newSymbol = translator.getSymbol($$);
     newSymbol.child = currEnv;
   } catch ( ... ) {/* Already declared in current scope */
@@ -1168,7 +1173,8 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
   try {
     // create a new symbol in current scope
     SymbolTable & table = translator.currentTable();
-    $$ = std::make_pair(translator.currentEnvironment(),table.lookup($1,curType,SymbolType::LOCAL));
+    std::string id = translator.scopePrefix + $1;
+    $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::LOCAL));
     
     SymbolRef rowRef = getIntegerBinaryOperand(translator,*this,@3,$3);
     SymbolRef colRef = getIntegerBinaryOperand(translator,*this,@6,$6);
@@ -1213,7 +1219,7 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
       colRef = typeCheck(colRef,intType,true,translator,*this,@6);
       Symbol & colInt = translator.getSymbol(colRef);
       Symbol & matSymbol = translator.getSymbol($$);
-      translator.emit(Taco(OP_LXC,matSymbol.id,std::to_string(SIZE_OF_INT),colInt.id));//m[4] = # of cols
+      translator.emit(Taco(OP_LXC,matSymbol.id,std::to_string(SIZE_OF_INT),colInt.id));
     } else {
       translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));//m[4] = # of cols
     }
@@ -1294,15 +1300,14 @@ compound_statement :
   /* LBrace encountered : push a new symbol table and link it to its parent */
   unsigned int oldEnv = translator.currentEnvironment();
   DataType voidType = MM_VOID_TYPE; // 
-  unsigned int newEnv = translator.newEnvironment("");
   SymbolRef ref = translator.genTemp( oldEnv, voidType );
   Symbol & temp = translator.getSymbol(ref);
-  translator.currentTable().name = temp.id;
-  temp.child = newEnv;
+  unsigned int newEnv = translator.newEnvironment(temp.id);
+  translator.getSymbol(ref).child = newEnv;
   SymbolTable & currTable = translator.currentTable();
   currTable.parent = oldEnv;
 } optional_block_item_list "}" {
-  // TODO : do scope post-processing
+  // CAN DO : post - scope - processing here
   std::swap($$,$3);
   translator.popEnvironment();
 } ;
@@ -1326,12 +1331,10 @@ block_item : declaration { } | statement { std::swap($$,$1); } ;
 
 expression_statement :
 optional_expression ";" { // patch back all jumps to the next instruction
-  
   if( $1.isBoolean ) {
     translator.patchBack($1.trueList,translator.nextInstruction());
     translator.patchBack($1.falseList,translator.nextInstruction());
   }
-  
 } ;
 
 /* 1 shift-reduce conflict arising out of this rule. Only this one is to be expected. */
@@ -1451,10 +1454,10 @@ optional_expression : %empty { } | expression { std::swap($$,$1); } ;
 
 translation_unit :
 external_declarations "EOF" {
-  // TODO : post-translation processing / optimizations
+  translator.postProcess();
+  // TODO : post-translation optimizations...
   YYACCEPT;// translation completed
-}
-;
+} ;
 
 external_declarations :
 %empty | external_declarations external_declaration { };
@@ -1468,15 +1471,13 @@ type_specifier function_declarator "{" {
   // to continue declaration within the same scope
   Symbol & symbol = translator.getSymbol($2);
   unsigned int functionScope = symbol.child;
-  // $2->value = address of this function
-  translator.environment.push(functionScope);
+  translator.pushEnvironment(functionScope);
   translator.emit(Taco(OP_FUNC_START,translator.currentTable().name));
 } optional_block_item_list "}" {
   translator.patchBack($5,translator.nextInstruction());
   translator.emit(Taco(OP_FUNC_END,translator.currentTable().name));
-  // TODO : "sort out" the current environment for generation of stack frame
-  translator.environment.pop();
-  translator.typeContext.pop(); // corresponding to the type_specifier
+  translator.popEnvironment();
+  translator.typeContext.pop();
 } ;
 
 %type < SymbolRef > function_declarator;
