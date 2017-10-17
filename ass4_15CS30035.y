@@ -408,10 +408,12 @@ inc_dec_op : "++" { $$ = '+'; } | "--" { $$ = '-'; } ;
 %type < std::vector<Expression> > optional_argument_list argument_list;
 optional_argument_list : %empty { } | argument_list { std::swap($$,$1); } ;
 argument_list :
-expression { $$.push_back($1); } |
-argument_list "," expression {
+expression {
+  dereference(translator,$1); // Pass argument
+  $$.push_back($1);
+} | argument_list "," expression {
   std::swap($$,$1);
-  dereference(translator,$3);
+  dereference(translator,$3); // Pass argument
   $$.push_back($3);
 } ;
 
@@ -1846,7 +1848,6 @@ void callFunction(mm_translator &translator,
   for(unsigned int i=1;i<=argList.size();i++) {
     Symbol & argument = translator.getSymbol(argList[i-1].symbol);
     DataType reqType = translator.tables[tableId].table[i].type;
-    
     if( reqType != argument.type and !(reqType == MM_MATRIX_TYPE and argument.type.isMatrix() ) ) {
       parser.error(loc,"Incorrect argument types.");
     }
