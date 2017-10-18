@@ -5,6 +5,10 @@
 #include <stack>
 #include <fstream>
 
+/* Policy based data structures */
+#include <ext/pb_ds/assoc_container.hpp>
+#include <ext/pb_ds/tree_policy.hpp>
+
 /* For determining return type of yylex */
 #include "ass4_15CS30035.tab.hh"
 
@@ -23,6 +27,13 @@ YY_DECL;
 /* Include expression definitions */
 #include "expressions.h"
 
+/* A map from string identifiers to symbols */
+typedef __gnu_pbds::trie<std::string,
+			 SymbolRef,
+			 __gnu_pbds::trie_string_access_traits<>,
+			 __gnu_pbds::pat_trie_tag, // PATRICIA Trie
+			 __gnu_pbds::trie_prefix_search_node_update> IDMap;
+
 /**
    Minimatlab translator class. An mm_translator object is used
    to instantiate a translation for every requested file.
@@ -39,7 +50,7 @@ public:
   bool trace_scan;
   
   // parse handlers
-  int translate (const std::string&);
+  int translate ();
   std::string file;
   bool trace_parse;
 
@@ -96,7 +107,16 @@ public:
   /* Symbol table of the current locality */
   std::vector<SymbolTable> tables;
   std::stack<int> environment;
-
+  IDMap idMap;
+  SymbolTable auxTable; // helper table
+  
+  // search symbol by id
+  SymbolRef lookup(const std::string &);
+  // create a new symbol
+  SymbolRef createSymbol(const std::string &,DataType &,const SymbolType &);
+  // create a new symbol in given environment
+  SymbolRef createSymbol(unsigned int,const std::string &,DataType &,const SymbolType &);
+  
   // Symbol table management
   /* Pushes a new environment and returns a pointer to it */
   std::string scopePrefix;
@@ -108,20 +128,19 @@ public:
   
   /* DataType of the object/method being declared currently */
   std::stack<DataType> typeContext;
-  bool parameterDeclaration; // flags if parameter is being declar
+  bool parameterDeclaration; // flags if parameter is being declared
+  bool needsDefinition;      // flags if currently declared function needs to be defined
   
   /* Helper functions */
-  
   // returns wether given symbol is a temporary
-  bool isTemporary(const SymbolRef & );
+  bool isTemporary(SymbolRef);
 
   /* Returns the greater of two types in basic type heirarchy 
      To be used only for non-matrix types only.
      If either is void or function or pointer : returns void.
   */
   static DataType maxType( DataType & , DataType & );
-
-
+  
   /* Calculates the offsets of all symbol tables. 
      Any postprocessing in the future can be done here. */
   void postProcess();

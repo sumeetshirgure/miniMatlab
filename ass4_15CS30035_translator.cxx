@@ -4,7 +4,7 @@
 
 /* Constructor for translator */
 mm_translator::mm_translator(const std::string &_file) :
-  trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) {
+  trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) , auxTable(0,"") {
   int len = file.length();
   if( file == "-" ) { // scanning from stdin
     fout.open("mm.out");
@@ -15,6 +15,7 @@ mm_translator::mm_translator(const std::string &_file) :
     std::string outFileName = file.substr(0,file.length()-3) + ".out";
     fout = std::ofstream(outFileName);
   }
+  needsDefinition = false;
   parameterDeclaration = false;
   temporaryCount = 0; // initialize tempCount to 0  
   newEnvironment("gST"); // initialize global table
@@ -34,7 +35,7 @@ mm_translator::~mm_translator() {
  * Returns 1 in case of any syntax error after reporting it to error stream.
  * Returns 0 if translation completes succesfully.
  */
-int mm_translator::translate(const std::string & _file) {
+int mm_translator::translate() {
   
   if( begin_scan() != 0 ) {
     end_scan();
@@ -84,6 +85,25 @@ unsigned int mm_translator::nextInstruction() {
 
 SymbolTable & mm_translator::globalTable() {
   return tables[0];
+}
+
+SymbolRef mm_translator::lookup(const std::string & id) {
+  auto it = idMap.find( id );
+  if( it == idMap.end() ) throw 1;
+  return it->second;
+}
+
+SymbolRef mm_translator::createSymbol(const std::string & id,DataType & dataType,const SymbolType & symbolType) {
+  return createSymbol(currentEnvironment(),id,dataType,symbolType);
+}
+
+SymbolRef mm_translator::createSymbol(unsigned int env,const std::string & id,DataType & dataType,const SymbolType & symbolType) {
+  auto it = idMap.find( id );
+  if( it != idMap.end() ) throw 1;
+  tables[env].table.emplace_back(Symbol(id,dataType,symbolType));
+  SymbolRef ret = std::make_pair( env , tables[env].table.size() - 1 );
+  idMap[id] = ret;
+  return ret;
 }
 
 unsigned int mm_translator::newEnvironment(const std::string &name="") {
@@ -139,23 +159,22 @@ bool mm_translator::isMatrixReference(Expression &expr) {
 // returns if expression refers to some matrix
 bool mm_translator::isMatrixOperand(Expression &expr) {
   DataType baseType = getSymbol(expr.symbol).type, auxType = getSymbol(expr.auxSymbol).type;
-  return baseType.isMatrix() and ( !expr.isReference or auxType != MM_INT_TYPE);
+  return baseType.isMatrix() and (!expr.isReference or auxType != MM_INT_TYPE);
 }
 
 SymbolRef mm_translator::genTemp(DataType & type) {
   std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  int idx = currentEnvironment();
-  return std::make_pair(idx,tables[idx].lookup(tempId,type,SymbolType::TEMP));
+  return createSymbol(tempId,type,SymbolType::TEMP);
 }
 
 SymbolRef mm_translator::genTemp(unsigned int idx , DataType & type) {
   std::string tempId = "#" + std::to_string(++temporaryCount);
   /* # so it won't collide with any existing non-temporary entries */
-  return std::make_pair(idx,tables[idx].lookup(tempId,type,SymbolType::TEMP));
+  return createSymbol(idx,tempId,type,SymbolType::TEMP);
 }
 
-bool mm_translator::isTemporary(const SymbolRef & ref) {
+bool mm_translator::isTemporary(SymbolRef ref) {
   Symbol & symbol = getSymbol(ref);
   return symbol.symType == SymbolType::TEMP;
 }
@@ -174,9 +193,8 @@ void mm_translator::updateSymbolTable(unsigned int tableId) {
 
 /* Print the entire symbol table */
 void mm_translator::printSymbolTable() {
-  for( int i = 0; i < tables.size() ; i++ ) {
+  for( int i = 0; i < tables.size() ; i++ )
     fout << tables[i] << std::endl;
-  }
 }
 
 /* Max type */
@@ -204,12 +222,12 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
   }
 }
 
-
 void mm_translator::postProcess() {
   for(unsigned int idx = 0; idx < tables.size() ; idx++ )
     updateSymbolTable(idx);
 }
 
+/**************************************************/
 
 /* Main translation driver */
 int main( int argc , char * argv[] ){
@@ -238,7 +256,7 @@ int main( int argc , char * argv[] ){
 	translator.trace_scan = trace_scan;
 	translator.trace_tacos = trace_tacos;
 	
-	result = translator.translate(cmd);
+	result = translator.translate();
 	
 	if(result != 0) cerr << cmd << " : Translation failed" << endl;
 	else {

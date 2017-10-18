@@ -203,8 +203,7 @@ IDENTIFIER {
   bool found = false;
   for( ; ; ) {
     try {
-      $$.symbol.second = translator.tables[scope].lookup( std::string(curPrefix + $1) );
-      $$.symbol.first = scope;
+      $$.symbol = translator.lookup( std::string(curPrefix + $1) );
       found = true;
     } catch ( ... ) {
     }
@@ -1079,7 +1078,8 @@ optional_pointer direct_declarator {
   $$ = $2;
   Symbol & symbol = translator.getSymbol($$);
   if( translator.currentEnvironment() == 0 and symbol.type == MM_FUNC_TYPE ) {
-    // Except global function declaration.
+    if( translator.needsDefinition )
+      throw syntax_error( @$ , "Function redeclaration." );      
   } else if( symbol.type.isIllegalDecalaration() ) {
     throw syntax_error( @$ , "Invalid type for declaration." );
   }
@@ -1106,11 +1106,11 @@ IDENTIFIER {
     DataType &  curType = translator.typeContext.top() ;
     SymbolTable & table = translator.currentTable();
     if(translator.parameterDeclaration) {
-      $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::PARAM));
+      $$ = translator.createSymbol(id,curType,SymbolType::PARAM);
     } else if( curType == MM_MATRIX_TYPE ) {
       throw syntax_error(@$,"Matrix declaration without dimensions not allowed.");
     } else {
-      $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::LOCAL));
+      $$ = translator.createSymbol(id,curType,SymbolType::LOCAL);
     }
   } catch ( syntax_error e ) {
     throw e;
@@ -1123,19 +1123,48 @@ IDENTIFIER {
 |
 /* Function declaration */
 IDENTIFIER "(" {
-  /* Create a new environment (to store the parameters and return type) */
   if(translator.parameterDeclaration) {
     throw syntax_error( @$ , "Syntax error." ); 
   }
   translator.parameterDeclaration = true;
+
+  /* Check if function is already declared */
+  unsigned int newEnv = 0;
+  try {
+    SymbolRef ref = translator.lookup(std::string("::" + $1));
+    Symbol& funcSym = translator.getSymbol(ref);
+    if( funcSym.type != MM_FUNC_TYPE ) {
+      throw syntax_error(@$,$1 +" has already been declared in this scope.");
+    }
+    newEnv = funcSym.child;
+    if( translator.tables[newEnv].isDefined ) {
+      throw syntax_error(@$,"Function "+ $1 +" is already defined.");
+    }
+    translator.needsDefinition = true;
+    translator.pushEnvironment(newEnv);
+
+    SymbolTable & currTable = translator.currentTable();
+    for( int i = 0; i < currTable.table.size() ; i++ )
+      translator.idMap.erase( currTable.table[i].id );
+    
+    SymbolTable & auxTable = translator.auxTable;
+    auxTable.table.clear();
+    auxTable.id = newEnv;
+    auxTable.name = translator.currentTable().name;
+
+    auxTable.parent = auxTable.offset = auxTable.params = 0;
+    auxTable.isDefined = false;
+    
+    std::swap( translator.currentTable() , translator.auxTable );
+  } catch (syntax_error se) {
+    throw se;
+  } catch( ... ) {
+    newEnv = translator.newEnvironment($1);
+  }
   
-  unsigned int oldEnv = translator.currentEnvironment();
-  unsigned int newEnv = translator.newEnvironment($1);
-  SymbolTable & currTable = translator.currentTable();
-  currTable.parent = oldEnv;
   DataType &  curType = translator.typeContext.top();
   try {
-    currTable.lookup("ret#" , curType , SymbolType::RETVAL );// push return type
+    translator.createSymbol(translator.scopePrefix + "ret#", curType , SymbolType::RETVAL );// push return type
   } catch ( ... ) {
     throw syntax_error( @$ , "Unexpected error. Debug compiler." );
   }
@@ -1143,19 +1172,27 @@ IDENTIFIER "(" {
   unsigned int currEnv = translator.currentEnvironment();
   SymbolTable & currTable = translator.currentTable();
   currTable.params = $4;
-  
+
+  if( translator.needsDefinition ) {
+    /* Check function signature */
+    if( currTable.params != translator.auxTable.params )
+      throw syntax_error(@$,"Inconsistent function signature.");
+    for(int i = 0 ; i < translator.auxTable.table.size() ; i++ )
+      if( currTable.table[i].type != translator.auxTable.table[i].type )
+	throw syntax_error(@$,"Inconsistent function signature.");
+    $$ = translator.lookup(std::string("::" + $1));
+  } else {
+    try {
+      DataType symbolType = MM_FUNC_TYPE ;
+      $$ = translator.createSymbol(0,std::string("::" + $1),symbolType,SymbolType::LOCAL);
+      Symbol & newSymbol = translator.getSymbol($$);
+      newSymbol.child = currEnv;
+    } catch ( ... ) {/* Already declared in current scope */
+      throw syntax_error(@$ , "Syntax error." );
+    }
+  }
   translator.parameterDeclaration = false;
   translator.popEnvironment();
-  try {
-    SymbolTable & outerTable = translator.currentTable();
-    DataType symbolType = MM_FUNC_TYPE ;
-    $$ = std::make_pair(translator.currentEnvironment()
-			,outerTable.lookup(std::string("::")+$1,symbolType,SymbolType::LOCAL));
-    Symbol & newSymbol = translator.getSymbol($$);
-    newSymbol.child = currEnv;
-  } catch ( ... ) {/* Already declared in current scope */
-    throw syntax_error( @$ , $1 + " has already been declared in this scope." );
-  }
   
 }
 |
@@ -1175,7 +1212,7 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
     // create a new symbol in current scope
     SymbolTable & table = translator.currentTable();
     std::string id = translator.scopePrefix + $1;
-    $$ = std::make_pair(translator.currentEnvironment(),table.lookup(id,curType,SymbolType::LOCAL));
+    $$ = translator.createSymbol(id,curType,SymbolType::LOCAL);
     
     SymbolRef rowRef = getIntegerBinaryOperand(translator,*this,@3,$3);
     SymbolRef colRef = getIntegerBinaryOperand(translator,*this,@6,$6);
@@ -1473,6 +1510,8 @@ type_specifier function_declarator "{" {
   Symbol & symbol = translator.getSymbol($2);
   unsigned int functionScope = symbol.child;
   translator.pushEnvironment(functionScope);
+  translator.currentTable().isDefined = true;
+  translator.needsDefinition = false;
   translator.emit(Taco(OP_FUNC_START,translator.currentTable().name));
 } optional_block_item_list "}" {
   translator.patchBack($5,translator.nextInstruction());
@@ -1487,7 +1526,7 @@ optional_pointer direct_declarator {
   $$ = $2;
   Symbol & symbol = translator.getSymbol($$);
   if( symbol.type != MM_FUNC_TYPE ) {
-    throw syntax_error( @$ , " Improper function definition : parameter list not found." );
+    throw syntax_error( @$ , "Improper function definition : parameter list not found." );
   }
 } ;
 

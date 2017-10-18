@@ -95,16 +95,9 @@ public:
 
   /* No of parameter entries in the table (in case of functions) */
   unsigned int params;
-  
-  /* Search a symbol by its id
-     If it does not exist , throws error.
-     Else returns index of that symbol in the table. */
-  unsigned int lookup (const std::string &) ;
-  
-  /*Create a symbol by its id and datatype
-    Throws error if it exists in table.
-    If not , returns index of a dummy symbol which must be initialized by the caller. */
-  unsigned int lookup (const std::string &, DataType &, const SymbolType &) ;
+
+  /* If this function is defined or not. */
+  bool isDefined;
   
   // construct ST
   SymbolTable(unsigned int,const std::string&);

@@ -53,29 +53,8 @@ std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
 }
 
 SymbolTable::SymbolTable(unsigned int _id,const std::string& _name="") :
-  id(_id),name(_name),offset(0),params(0) { }
+  id(_id),name(_name),parent(0),offset(0),params(0),isDefined(false) { }
 
 SymbolTable::~SymbolTable() {
   table.clear();
-}
-
-unsigned int SymbolTable::lookup (const std::string & id) {
-  for( int idx = 0 ; idx < table.size() ; idx++ ) {
-    if( table[idx].id == id ) {
-      return idx;
-    }
-  }
-  throw 1;
-}
-
-unsigned int SymbolTable::lookup (const std::string & id , DataType & _dataType, const SymbolType & _type) {
-  for( int idx = 0 ; idx < table.size() ; idx++ ) {
-    if( table[idx].id == id ) {
-      throw 1;
-    }
-  }
-  table.push_back(Symbol(id,_dataType,_type));
-  table.back().offset = offset;
-  offset += _dataType.getSize();
-  return table.size()-1;
 }
