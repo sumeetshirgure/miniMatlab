@@ -385,6 +385,7 @@ postfix_expression inc_dec_op { // inc_dec_op generates ++ or --
   } else {
     throw syntax_error(@1,"Invalid operand.");
   }
+  
 } |
 postfix_expression ".'" {
   std::swap($$,$1);
@@ -518,6 +519,9 @@ unary_operator unary_expression {
   case '*' : {
     if( rType.isPointer() ) {
       DataType elementType = rType; elementType.pointers--;
+      if( elementType == MM_VOID_TYPE ) {
+	throw syntax_error(@$,"Cannot dereference pointer to void type object.");
+      }
       SymbolRef retRef = translator.genTemp(elementType);
       Symbol & retSymbol = translator.getSymbol(retRef);
       Symbol & RHS = translator.getSymbol($$.symbol);
@@ -668,7 +672,26 @@ unary_operator unary_expression {
 unary_operator : "&" { $$ = '&'; } |"*" { $$ = '*'; } |"~" { $$='~';} |"+" { $$ = '+'; } |"-" { $$ = '-'; }|"!" { $$ = '!'; };
 
 %type <Expression> cast_expression;
-cast_expression : unary_expression { std::swap($$,$1); }
+cast_expression : unary_expression { std::swap($$,$1); } |
+"(" type_specifier optional_pointer { translator.typeContext.pop(); } ")" cast_expression {
+  dereference(translator,$6);
+  DataType castType = $2; castType.pointers += $3;
+  Symbol & baseSym = translator.getSymbol($6.symbol);
+  if( castType.isPointer() and baseSym.type.isPointer() ) { // can convert from pointers to pointers
+    if(  castType != baseSym.type ) {
+      SymbolRef retRef = translator.genTemp(castType);
+      Symbol & retSym = translator.getSymbol(retRef);
+      Symbol & RHS = translator.getSymbol($6.symbol);
+      translator.emit(Taco(OP_COPY,retSym.id,RHS.id));
+      $$.symbol = retRef; $$.isReference = false;
+    } else {
+      std::swap($$,$6);
+    }
+  } else { // ... can convert between scalars using typeCheck
+    SymbolRef retRef =  typeCheck($6.symbol,castType,true,translator,*this,@6);
+    $$.symbol = retRef; $$.isReference = false;
+  }
+} ;
 
 %type <Expression> multiplicative_expression;
 multiplicative_expression :
@@ -1002,11 +1025,11 @@ declaration : type_specifier initialized_declarator_list ";" {translator.typeCon
 
 %type <DataType> type_specifier;
 type_specifier :
-  "void" { translator.typeContext.push( MM_VOID_TYPE ); }
-| "char" { translator.typeContext.push( MM_CHAR_TYPE ); }
-|  "int" { translator.typeContext.push( MM_INT_TYPE );  }
-|"double" {translator.typeContext.push( MM_DOUBLE_TYPE);}
-|"Matrix" {translator.typeContext.push( MM_MATRIX_TYPE);} ;
+  "void" { translator.typeContext.push( MM_VOID_TYPE );  $$ = MM_VOID_TYPE;   }
+| "char" { translator.typeContext.push( MM_CHAR_TYPE );  $$ = MM_CHAR_TYPE;   }
+|  "int" { translator.typeContext.push( MM_INT_TYPE );   $$ = MM_INT_TYPE;    }
+|"double" {translator.typeContext.push( MM_DOUBLE_TYPE); $$ = MM_DOUBLE_TYPE; }
+|"Matrix" {translator.typeContext.push( MM_MATRIX_TYPE); $$ = MM_MATRIX_TYPE; }
 
 initialized_declarator_list :
 initialized_declarator | initialized_declarator_list "," initialized_declarator ;
@@ -1467,6 +1490,9 @@ jump_statement :
   dereference(translator,$2);
   unsigned int currEnv = translator.currentEnvironment() ;
   unsigned int parent = translator.tables[currEnv].parent ;
+  if( translator.tables[currEnv].table[0].type == MM_VOID_TYPE ) {
+    throw syntax_error(@$,"Void function cannot return anything.");
+  }
   while( parent != 0 ) {
     currEnv = parent ; parent = translator.tables[currEnv].parent ;
   }
@@ -1619,6 +1645,9 @@ SymbolRef typeCheck(SymbolRef ref,
 		    ) {
   DataType baseType = translator.getSymbol( ref ).type;
   if( baseType != type ) {
+    if( !(baseType == MM_CHAR_TYPE or baseType == MM_INT_TYPE or baseType == MM_DOUBLE_TYPE) ) {
+      parser.error(loc , "Cannot convert given expression.");
+    }
     if( convert ) {
       SymbolRef ret = translator.genTemp(type);
       Symbol & retSymbol = translator.getSymbol(ret);
@@ -1652,6 +1681,8 @@ SymbolRef typeCheck(SymbolRef ref,
 	} else if( rhs.type == MM_DOUBLE_TYPE ) {
 	  retSymbol.value.doubleVal = rhs.value.doubleVal;
 	}
+      } else {
+	parser.error(loc , "Cannot convert into requested type.");
       }
       return ret;
     } else {
