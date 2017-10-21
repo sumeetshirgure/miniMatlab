@@ -26,6 +26,10 @@ std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
   else if( symbol.type == MM_CHAR_TYPE ) out << (int)symbol.value.charVal ;
   else if( symbol.type == MM_INT_TYPE) out << symbol.value.intVal ;
   else if( symbol.type == MM_DOUBLE_TYPE) out << symbol.value.doubleVal ;
+  else if( symbol.type == MM_STRING_TYPE ) {
+    std::string output = "$." + std::to_string(symbol.value.intVal) ;
+    out << output;
+  }
   else out << "-----" ;
   
   out << std::setw(10);

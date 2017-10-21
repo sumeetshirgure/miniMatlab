@@ -21,6 +21,7 @@ mm_translator::mm_translator(const std::string &_file) :
   newEnvironment("gST"); // initialize global table
   scopePrefix = "::";
   globalTable().parent = 0;
+  stringTable.emplace_back("");
 }
 
 /* Destructor for translator */
@@ -253,6 +254,13 @@ int main( int argc , char * argv[] ){
 	  translator.fout << endl;
 	  translator.fout << endl << "Symbol tables : " << endl;
 	  translator.printSymbolTable();
+	  
+	  for(int i=0;i<100;i++)translator.fout<<'-';
+	  translator.fout << endl;
+	  translator.fout << endl << "String table : " << endl;
+	  for(int i = 1 ; i < translator.stringTable.size() ; i++ )
+	    translator.fout << i << " : " << translator.stringTable[i] << endl;
+	  translator.fout << endl;
 	  
 	  for(int i=0;i<100;i++)translator.fout<<'*';
 	  translator.fout << endl;

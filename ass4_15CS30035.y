@@ -224,36 +224,32 @@ IDENTIFIER {
   Symbol & temp = translator.getSymbol(ref);
   temp.symType = SymbolType::CONST;
   temp.value.intVal = $1;
-  temp.isInitialized = true;
-  temp.isConstant = true;
+  temp.isInitialized = temp.isConstant = true;
   $$.symbol = ref;
-  // translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 } | FLOATING_CONSTANT {
   DataType doubleType = MM_DOUBLE_TYPE;
   SymbolRef ref = translator.genTemp(doubleType);
   Symbol & temp = translator.getSymbol(ref);
   temp.symType = SymbolType::CONST;
   temp.value.doubleVal = $1;
-  temp.isInitialized = true;
-  temp.isConstant = true;
+  temp.isInitialized = temp.isConstant = true;
   $$.symbol = ref;
-  // translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 } | CHARACTER_CONSTANT {
   DataType charType = MM_CHAR_TYPE;
   SymbolRef ref = translator.genTemp(charType);
   Symbol & temp = translator.getSymbol(ref);
   temp.symType = SymbolType::CONST;
   temp.value.charVal = $1;
-  temp.isInitialized = true;
-  temp.isConstant = true;
+  temp.isInitialized = temp.isConstant = true;
   $$.symbol = ref;
-  // translator.emit(Taco(OP_COPY,temp.id,std::to_string($1)));
 } | STRING_LITERAL {
-  DataType charPointerType = MM_CHAR_TYPE;
-  charPointerType.pointers++;
+  DataType charPointerType = MM_STRING_TYPE;
   SymbolRef ref = translator.genTemp(charPointerType);
   Symbol & temp = translator.getSymbol(ref);
+  temp.isInitialized = temp.isConstant = true;
   temp.symType = SymbolType::CONST;
+  temp.value.intVal = translator.stringTable.size();
+  translator.stringTable.emplace_back($1);
   $$.symbol = ref;
 } | "(" expression ")" {
   std::swap($$,$2);

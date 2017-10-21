@@ -140,6 +140,9 @@ public:
      If either is void or function or pointer : returns void.
   */
   static DataType maxType( DataType & , DataType & );
+
+  /* Table of string constants. */
+  std::vector<std::string> stringTable;
   
 };
 

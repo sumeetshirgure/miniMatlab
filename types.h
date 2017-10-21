@@ -69,5 +69,6 @@ const DataType MM_INT_TYPE     (0,0,3);
 const DataType MM_DOUBLE_TYPE  (0,0,4);
 const DataType MM_FUNC_TYPE    (0,0,5);
 
+const DataType MM_STRING_TYPE    (1,0,2);
 
 #endif /* ! MM_TYPES_H */
