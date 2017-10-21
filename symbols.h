@@ -51,9 +51,6 @@ public:
      Even if isConstant is high , symbol's value is still stored in initial value. */
   bool isConstant;
   
-  /* Offset w.r.t current SymbolTable */
-  unsigned int offset;
-  
   /* Address of the possible nested table (all of which are translator objects) */
   unsigned int child;
   
@@ -90,9 +87,6 @@ public:
   /* The table itself. */
   std::vector<Symbol> table;
   
-  /* Size of all entries in this table */
-  unsigned int offset;
-
   /* No of parameter entries in the table (in case of functions) */
   unsigned int params;
 

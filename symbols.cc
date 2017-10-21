@@ -2,19 +2,19 @@
 #include <iomanip>
 
 Symbol::Symbol ( ) :
-  id(""),type(MM_VOID_TYPE),symType(LOCAL),offset(0),isInitialized(false),isConstant(false),child(0) { }
+  id(""),type(MM_VOID_TYPE),symType(LOCAL),isInitialized(false),isConstant(false),child(0) { }
 
 // Empty symbol
 Symbol::Symbol (const std::string & _id, const DataType & _type) :
-  id(_id),type(_type),symType(LOCAL),offset(0),isInitialized(false),isConstant(false),child(0) { }
+  id(_id),type(_type),symType(LOCAL),isInitialized(false),isConstant(false),child(0) { }
 
 // Initialized symbol
 Symbol::Symbol (const std::string & _id, const DataType & _type,InitialValue _value) :
-  id(_id),type(_type),symType(LOCAL),offset(0),isInitialized(true),isConstant(false),value(_value),child(0) { }
+  id(_id),type(_type),symType(LOCAL),isInitialized(true),isConstant(false),value(_value),child(0) { }
 
 // Dummy symbol
 Symbol::Symbol (const std::string & _id, const DataType & _type, const SymbolType & _symType) :
-  id(_id),type(_type),symType(_symType),offset(0),isInitialized(false),isConstant(false),child(0) { }
+  id(_id),type(_type),symType(_symType),isInitialized(false),isConstant(false),child(0) { }
 
 Symbol::~Symbol () { }
 
@@ -37,7 +37,6 @@ std::ostream& operator<<(std::ostream& out, Symbol & symbol) {
   else out << "-----" ;
   
   out << std::setw(10) << symbol.type.getSize()
-      << std::setw(10) << symbol.offset
       << std::setw(10) << symbol.child ;
   return out;
 }
@@ -53,7 +52,7 @@ std::ostream& operator<<(std::ostream & out, SymbolTable & symbolTable) {
 }
 
 SymbolTable::SymbolTable(unsigned int _id,const std::string& _name="") :
-  id(_id),name(_name),parent(0),offset(0),params(0),isDefined(false) { }
+  id(_id),name(_name),parent(0),params(0),isDefined(false) { }
 
 SymbolTable::~SymbolTable() {
   table.clear();

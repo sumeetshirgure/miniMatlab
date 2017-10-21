@@ -4,7 +4,7 @@
 #include <iostream>
 
 /* Supposed to be machine dependant constants */
-const unsigned int SIZE_OF_PTR = 4;
+const unsigned int SIZE_OF_PTR = 8;
 const unsigned int SIZE_OF_CHAR = 1;
 const unsigned int SIZE_OF_BOOL = 1;
 const unsigned int SIZE_OF_INT = 4;

@@ -179,18 +179,6 @@ bool mm_translator::isTemporary(SymbolRef ref) {
   return symbol.symType == SymbolType::TEMP;
 }
 
-void mm_translator::updateSymbolTable(unsigned int tableId) {
-  SymbolTable & symbolTable = tables[tableId];
-  for(int idx = 0; idx<symbolTable.table.size(); idx++) {
-    if( idx + 1 < symbolTable.table.size() ) {
-      Symbol & curSymbol = symbolTable.table[idx];
-      Symbol & nextSymbol = symbolTable.table[idx+1];
-      nextSymbol.offset = curSymbol.offset + curSymbol.type.getSize();
-      symbolTable.offset = nextSymbol.offset + nextSymbol.type.getSize();
-    }
-  }
-}
-
 /* Print the entire symbol table */
 void mm_translator::printSymbolTable() {
   for( int i = 0; i < tables.size() ; i++ )
@@ -220,11 +208,6 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
     if( trace_tacos )
       std::cerr << "Goto @" << *it << " linked to " << address << std::endl;
   }
-}
-
-void mm_translator::postProcess() {
-  for(unsigned int idx = 0; idx < tables.size() ; idx++ )
-    updateSymbolTable(idx);
 }
 
 /**************************************************/

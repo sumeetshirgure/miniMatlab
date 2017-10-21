@@ -141,10 +141,6 @@ public:
   */
   static DataType maxType( DataType & , DataType & );
   
-  /* Calculates the offsets of all symbol tables. 
-     Any postprocessing in the future can be done here. */
-  void postProcess();
-  
 };
 
 #endif /* ! MM_TRANSLATOR_H */

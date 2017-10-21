@@ -284,10 +284,20 @@ postfix_expression "[" expression "]" "[" expression "]" {
     if( rowIndex.type != MM_INT_TYPE or colIndex.type != MM_INT_TYPE ) {
       throw syntax_error(@$ , "Non-integral index for matrix " + LHS.id + "." );
     }
+    
     translator.emit(Taco(OP_MULT,temp.id,rowIndex.id,std::to_string(LHS.type.cols)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,colIndex.id));
     translator.emit(Taco(OP_MULT,temp.id,temp.id,std::to_string(SIZE_OF_DOUBLE)));
     translator.emit(Taco(OP_PLUS,temp.id,temp.id,std::to_string(2*SIZE_OF_INT)));
+
+    if( rowIndex.isConstant and colIndex.isConstant ) {
+      temp.isConstant = temp.isInitialized = true;
+      temp.value.intVal =
+	(rowIndex.value.intVal * LHS.type.cols + colIndex.value.intVal ) *SIZE_OF_DOUBLE
+	+ 2 * SIZE_OF_INT;
+      temp.symType = SymbolType::CONST;
+    }
+    
     $$.auxSymbol = tempRef;
     $$.isReference = true;
   } else if( lSym.type.isMatrix() ) {
@@ -541,7 +551,7 @@ unary_operator unary_expression {
 	  DataType matType = MM_MATRIX_TYPE;
 	  SymbolRef retRef = translator.genTemp(matType);
 	  Symbol & retSym = translator.getSymbol(retRef);
-	  Symbol & matSym = translator.getSymbol($$.symbol);
+	  Symbol & matSym = translator.getSymbol($$.symbol); // DogeMaster
 	  translator.emit(Taco(OP_COPY,retSym.id,matSym.id));// ret = +m
 	  $$.symbol = retRef;
 	  $$.isReference = false;
@@ -585,7 +595,7 @@ unary_operator unary_expression {
 	  DataType matType = MM_MATRIX_TYPE;
 	  SymbolRef retRef = translator.genTemp(matType);
 	  Symbol & retSym = translator.getSymbol(retRef);
-	  Symbol & matSym = translator.getSymbol($$.symbol);
+	  Symbol & matSym = translator.getSymbol($$.symbol); //DogeMaster
 	  translator.emit(Taco(OP_UMINUS,retSym.id,matSym.id));// ret = -m
 	  $$.symbol = retRef;
 	  $$.isReference = false;
@@ -621,7 +631,7 @@ unary_operator unary_expression {
       throw syntax_error(@$ , "Unary minus on pointer not allowed." );
     } else if( rType.isMatrix() ) {
       Symbol & RHS = translator.getSymbol($$.symbol);
-      translator.emit(Taco(OP_UMINUS,RHS.id,RHS.id));//
+      translator.emit(Taco(OP_UMINUS,RHS.id,RHS.id)); // Not DogeMaster
     } else if( rType == MM_CHAR_TYPE or rType == MM_INT_TYPE or rType == MM_DOUBLE_TYPE ){
       Symbol & RHS = translator.getSymbol($$.symbol);
       translator.emit(Taco(OP_UMINUS,RHS.id,RHS.id));//
@@ -646,6 +656,9 @@ unary_operator unary_expression {
     translator.emit(Taco(OP_BIT_NOT,retSym.id,CRHS.id));// ret = ~rhs
     retSym.isInitialized = CRHS.isInitialized;
     retSym.isConstant    = CRHS.isConstant   ;
+    if( retSym.isConstant ) {
+      retSym.symType = SymbolType::CONST;
+    }
     if( retSym.isInitialized ) {
       if( rType == MM_CHAR_TYPE ) {
 	retSym.value.charVal = ~CRHS.value.charVal;
@@ -676,9 +689,9 @@ cast_expression : unary_expression { std::swap($$,$1); } |
 "(" type_specifier optional_pointer { translator.typeContext.pop(); } ")" cast_expression {
   dereference(translator,$6);
   DataType castType = $2; castType.pointers += $3;
-  Symbol & baseSym = translator.getSymbol($6.symbol);
-  if( castType.isPointer() and baseSym.type.isPointer() ) { // can convert from pointers to pointers
-    if(  castType != baseSym.type ) {
+  DataType baseType = translator.getSymbol($6.symbol).type;
+  if( castType.isPointer() and baseType.isPointer() ) { // can convert from pointers to pointers
+    if(  castType != baseType ) {
       SymbolRef retRef = translator.genTemp(castType);
       Symbol & retSym = translator.getSymbol(retRef);
       Symbol & RHS = translator.getSymbol($6.symbol);
@@ -721,11 +734,11 @@ cast_expression {
       } else { // matrix * matrix
 	SymbolRef LHR = $1.symbol , RHR = $3.symbol;
 	DataType retType = MM_MATRIX_TYPE;
-	SymbolRef retRef = translator.genTemp(retType);
+	SymbolRef retRef = translator.genTemp(retType); // DogeMaster
 	Symbol & lSym = translator.getSymbol(LHR);
 	Symbol & rSym = translator.getSymbol(RHR);
 	Symbol & retSym = translator.getSymbol(retRef);
-	translator.emit(Taco(OP_MULT,retSym.id,lSym.id,rSym.id)); //
+	translator.emit(Taco(OP_MULT,retSym.id,lSym.id,rSym.id));
 	$$.symbol = retRef;
       }
     } else { // matrix * / scalar
@@ -819,7 +832,7 @@ multiplicative_expression {
       SymbolRef retRef;
       if(!lTemp and !rTemp) {
 	DataType matType = MM_MATRIX_TYPE;
-	retRef = translator.genTemp(matType);
+	retRef = translator.genTemp(matType); // DogeMaster
       } else {
 	if( lTemp ) retRef = LHR;
 	else retRef = RHR;
@@ -1050,6 +1063,9 @@ declarator "=" expression {
       translator.emit(Taco(OP_COPY,retSym.id,rSym.id));
     }
   } else if( defSym.type.isPointer() ) {
+    if( translator.currentEnvironment() == 0 ) {
+      throw syntax_error(@$,"Globally initialized pointer declaration not allowed.");
+    }
     Symbol & rSym = translator.getSymbol($3.symbol);
     if( rSym.type == defSym.type ) {
       translator.emit(Taco(OP_COPY,defSym.id,rSym.id));
@@ -1175,7 +1191,7 @@ IDENTIFIER "(" {
     auxTable.id = newEnv;
     auxTable.name = translator.currentTable().name;
 
-    auxTable.parent = auxTable.offset = auxTable.params = 0;
+    auxTable.parent = auxTable.params = 0;
     auxTable.isDefined = false;
     
     std::swap( translator.currentTable() , translator.auxTable );
@@ -1237,53 +1253,33 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
     std::string id = translator.scopePrefix + $1;
     $$ = translator.createSymbol(id,curType,SymbolType::LOCAL);
     
-    SymbolRef rowRef = getIntegerBinaryOperand(translator,*this,@3,$3);
-    SymbolRef colRef = getIntegerBinaryOperand(translator,*this,@6,$6);
+    DataType addressType = MM_INT_TYPE;
+    SymbolRef rowRef = $3.symbol;
+    SymbolRef colRef = $6.symbol;
+    
     Symbol & curSymbol = translator.getSymbol($$);
     Symbol & rowSym = translator.getSymbol(rowRef);
     Symbol & colSym = translator.getSymbol(colRef);
+
+    if( rowSym.type != MM_INT_TYPE or colSym.type != MM_INT_TYPE ) {
+      throw syntax_error(@$ , "Non-integral indices for matrix definition.");
+    }
     
     if( rowSym.isConstant and colSym.isConstant ) {
-      if( rowSym.type == MM_CHAR_TYPE ) {
-	if(rowSym.value.charVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
-	curSymbol.type.rows = rowSym.value.charVal;
-      } else {
-	if(rowSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
-	curSymbol.type.rows = rowSym.value.intVal;
-      }
-      if( colSym.type == MM_CHAR_TYPE ) {
-	if(colSym.value.charVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
-	curSymbol.type.cols = colSym.value.charVal;
-      } else {
-	if(colSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
-	curSymbol.type.cols = colSym.value.intVal;
-      }
+      if(rowSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+      if(colSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
+      curSymbol.type.rows = rowSym.value.intVal;
+      curSymbol.type.cols = colSym.value.intVal;
     } else {
       unsigned int currEnv = translator.currentEnvironment();
       if( currEnv == 0 ) {// Check environment. Globally declared dynamic matrices should not be allowed.
 	throw syntax_error(@$,"Non-static declaration in global scope.");
-      }
+      } // DogeMaster
     }
     
-    if(rowSym.type == MM_CHAR_TYPE) {
-      DataType intType = MM_INT_TYPE;
-      rowRef = typeCheck(rowRef,intType,true,translator,*this,@3);
-      Symbol & rowInt = translator.getSymbol(rowRef);
-      Symbol & matSymbol = translator.getSymbol($$);
-      translator.emit(Taco(OP_LXC,matSymbol.id,"0",rowInt.id));// m[0] = # of rows
-    } else {
-      translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
-    }
+    translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
+    translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));
     
-    if(colSym.type == MM_CHAR_TYPE) {
-      DataType intType = MM_INT_TYPE;
-      colRef = typeCheck(colRef,intType,true,translator,*this,@6);
-      Symbol & colInt = translator.getSymbol(colRef);
-      Symbol & matSymbol = translator.getSymbol($$);
-      translator.emit(Taco(OP_LXC,matSymbol.id,std::to_string(SIZE_OF_INT),colInt.id));
-    } else {
-      translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));//m[4] = # of cols
-    }
   } catch ( syntax_error se ) {
     throw se;
   } catch ( ... ) {/* Already declared in current scope */
@@ -1517,11 +1513,7 @@ optional_expression : %empty { } | expression { std::swap($$,$1); } ;
 %start translation_unit;
 
 translation_unit :
-external_declarations "EOF" {
-  translator.postProcess();
-  // TODO : post-translation optimizations...
-  YYACCEPT;// translation completed
-} ;
+external_declarations "EOF" { YYACCEPT; } ;// translation completed
 
 external_declarations :
 %empty | external_declarations external_declaration { };
@@ -1654,6 +1646,10 @@ SymbolRef typeCheck(SymbolRef ref,
       Symbol & rhs = translator.getSymbol( ref );
       retSymbol.isInitialized = rhs.isInitialized;
       retSymbol.isConstant    = rhs.isConstant   ;
+      if( retSymbol.isConstant ) {
+	retSymbol.symType = SymbolType::CONST;
+      }
+      
       if( type == MM_CHAR_TYPE ) {
 	translator.emit(Taco(OP_CONV_TO_CHAR,retSymbol.id,rhs.id));
 	if( rhs.type == MM_CHAR_TYPE ) {
@@ -1726,6 +1722,10 @@ void emitScalarBinaryOperation(char opChar ,
 
   retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
   retSymbol.isConstant    = CLHS.isConstant    and CRHS.isConstant   ;
+  
+  if( retSymbol.isConstant ) {
+    retSymbol.symType = SymbolType::CONST;
+  }
   
   if( opChar == '*' ) translator.emit(Taco(OP_MULT,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '/' ) translator.emit(Taco(OP_DIV,retSymbol.id,CLHS.id,CRHS.id));
@@ -1805,7 +1805,11 @@ void emitIntegerBinaryOperation(char opChar,
 
   retSymbol.isInitialized = CLHS.isInitialized and CRHS.isInitialized;
   retSymbol.isConstant    = CLHS.isConstant    and CRHS.isConstant   ;
-  
+
+  if( retSymbol.isConstant ) {
+    retSymbol.symType = SymbolType::CONST;
+  }
+
   if( opChar == '%' ) translator.emit(Taco(OP_MOD,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '<' ) translator.emit(Taco(OP_SHL,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '>' ) translator.emit(Taco(OP_SHR,retSymbol.id,CLHS.id,CRHS.id));
