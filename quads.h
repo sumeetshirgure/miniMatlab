@@ -54,6 +54,9 @@ enum OpCode {
   OP_CONV_TO_CHAR  , // z = (char) x
   OP_CONV_TO_INT   , // z = (int) x
   OP_CONV_TO_DOUBLE, // z = (double) x
+
+  OP_ALLOC,          // z = alloc(rows,cols) , z = alloc(Matrix) , z = alloc(Matrix,Matrix)
+  OP_DEALLOC,        // dealloc(z)
   
   OP_TRANSPOSE  // z = transpose(x) , where z and x point to a block of same size
 };

@@ -47,6 +47,9 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_CONV_TO_INT : return out<<taco.z<<" = toInt( "<<taco.x<<" )";
   case OP_CONV_TO_DOUBLE : return out<<taco.z<<" = toDouble( "<<taco.x<<" )";
 
+  case OP_ALLOC : return out<<taco.z<<" = alloc("<<taco.x<<" , "<<taco.y<<" )";
+  case OP_DEALLOC : return out<<"dealloc( "<<taco.z<<" )";
+
   case OP_TRANSPOSE : return out<<taco.z<<" = "<<taco.x<<".'";
   default : break;
   }

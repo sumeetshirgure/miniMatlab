@@ -400,6 +400,7 @@ postfix_expression ".'" {
     SymbolRef retRef = translator.genTemp(matType);
     Symbol & retSym = translator.getSymbol(retRef);
     Symbol & matSym = translator.getSymbol($$.symbol);
+    translator.emit(Taco(OP_ALLOC,retSym.id,"",matSym.id)); // DogeMaster
     translator.emit(Taco(OP_TRANSPOSE,retSym.id,matSym.id));// ret = m.'
     $$.symbol = retRef;
     $$.isReference = false;
@@ -547,7 +548,8 @@ unary_operator unary_expression {
 	  DataType matType = MM_MATRIX_TYPE;
 	  SymbolRef retRef = translator.genTemp(matType);
 	  Symbol & retSym = translator.getSymbol(retRef);
-	  Symbol & matSym = translator.getSymbol($$.symbol); // DogeMaster
+	  Symbol & matSym = translator.getSymbol($$.symbol);
+	  translator.emit(Taco(OP_ALLOC,retSym.id,matSym.id)); // DogeMaster
 	  translator.emit(Taco(OP_COPY,retSym.id,matSym.id));// ret = +m
 	  $$.symbol = retRef;
 	  $$.isReference = false;
@@ -591,7 +593,8 @@ unary_operator unary_expression {
 	  DataType matType = MM_MATRIX_TYPE;
 	  SymbolRef retRef = translator.genTemp(matType);
 	  Symbol & retSym = translator.getSymbol(retRef);
-	  Symbol & matSym = translator.getSymbol($$.symbol); //DogeMaster
+	  Symbol & matSym = translator.getSymbol($$.symbol);
+	  translator.emit(Taco(OP_ALLOC,retSym.id,matSym.id)); // DogeMaster
 	  translator.emit(Taco(OP_UMINUS,retSym.id,matSym.id));// ret = -m
 	  $$.symbol = retRef;
 	  $$.isReference = false;
@@ -721,6 +724,9 @@ cast_expression {
 	if( !translator.isTemporary(retRef) ) {
 	  DataType matType = MM_MATRIX_TYPE;
 	  retRef = translator.genTemp(matType);
+	  Symbol & retSym = translator.getSymbol(retRef);
+	  Symbol & matSym = translator.getSymbol($3.symbol);
+	  translator.emit(Taco(OP_ALLOC,retSym.id,matSym.id)); // DogeMaster
 	}
 	Symbol & mulSym = translator.getSymbol(mulRef);
 	Symbol & matSym = translator.getSymbol($3.symbol);
@@ -730,10 +736,11 @@ cast_expression {
       } else { // matrix * matrix
 	SymbolRef LHR = $1.symbol , RHR = $3.symbol;
 	DataType retType = MM_MATRIX_TYPE;
-	SymbolRef retRef = translator.genTemp(retType); // DogeMaster
+	SymbolRef retRef = translator.genTemp(retType);
 	Symbol & lSym = translator.getSymbol(LHR);
 	Symbol & rSym = translator.getSymbol(RHR);
 	Symbol & retSym = translator.getSymbol(retRef);
+	translator.emit(Taco(OP_ALLOC,retSym.id,lSym.id,rSym.id)); // DogeMaster
 	translator.emit(Taco(OP_MULT,retSym.id,lSym.id,rSym.id));
 	$$.symbol = retRef;
       }
@@ -745,6 +752,9 @@ cast_expression {
       if( !translator.isTemporary(retRef) ) {
 	DataType matType = MM_MATRIX_TYPE;
 	retRef = translator.genTemp(matType);
+	Symbol & retSym = translator.getSymbol(retRef);
+	Symbol & matSym = translator.getSymbol($1.symbol);
+	translator.emit(Taco(OP_ALLOC,retSym.id,matSym.id)); // DogeMaster
       }
       Symbol & mulSym = translator.getSymbol(mulRef);
       Symbol & matSym = translator.getSymbol($1.symbol);
@@ -828,7 +838,11 @@ multiplicative_expression {
       SymbolRef retRef;
       if(!lTemp and !rTemp) {
 	DataType matType = MM_MATRIX_TYPE;
-	retRef = translator.genTemp(matType); // DogeMaster
+	retRef = translator.genTemp(matType);
+	Symbol & lSym = translator.getSymbol(LHR);
+	Symbol & rSym = translator.getSymbol(RHR);
+	Symbol & retSym = translator.getSymbol(retRef);
+	translator.emit(Taco(OP_ALLOC,retSym.id,lSym.id)); // DogeMaster
       } else {
 	if( lTemp ) retRef = LHR;
 	else retRef = RHR;
@@ -1270,7 +1284,8 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
       unsigned int currEnv = translator.currentEnvironment();
       if( currEnv == 0 ) {// Check environment. Globally declared dynamic matrices should not be allowed.
 	throw syntax_error(@$,"Non-static declaration in global scope.");
-      } // DogeMaster
+      }
+      translator.emit(Taco(OP_ALLOC,curSymbol.id,rowSym.id,colSym.id)); // DogeMaster
     }
     
     translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
@@ -1361,6 +1376,10 @@ compound_statement :
   currTable.parent = oldEnv;
 } optional_block_item_list "}" {
   // CAN DO : post - scope - processing here
+  for( Symbol & symbol : translator.currentTable().table ) {
+    if( symbol.type == MM_MATRIX_TYPE )
+      translator.emit(Taco(OP_DEALLOC,symbol.id)); // DogeMaster
+  }
   std::swap($$,$3);
   translator.popEnvironment();
 } ;
@@ -1531,6 +1550,7 @@ type_specifier function_declarator "{" {
   translator.patchBack($5,translator.nextInstruction());
   translator.emit(Taco(OP_FUNC_END,translator.currentTable().name));
   translator.popEnvironment();
+  // #DogeMaster : Remaining matrix memory deallocation is handled by OP_FUNC_END itself.
   translator.typeContext.pop();
 } ;
 
