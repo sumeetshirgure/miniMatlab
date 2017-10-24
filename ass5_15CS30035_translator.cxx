@@ -5,16 +5,6 @@
 /* Constructor for translator */
 mm_translator::mm_translator(const std::string &_file) :
   trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) , auxTable(0,"") {
-  int len = file.length();
-  if( file == "-" ) { // scanning from stdin
-    fout.open("mm.out");
-  } else if( len < 3 or file[len-3] != '.' or file[len-2] != 'm' or file[len-1] != 'm' ) {
-    std::cerr << "Fatal error : " << _file << " : Not a .mm file" << std::endl; // lol
-    throw 1;
-  } else {
-    std::string outFileName = file.substr(0,file.length()-3) + ".out";
-    fout = std::ofstream(outFileName);
-  }
   needsDefinition = false;
   parameterDeclaration = false;
   temporaryCount = 0; // initialize tempCount to 0  
@@ -25,11 +15,7 @@ mm_translator::mm_translator(const std::string &_file) :
 }
 
 /* Destructor for translator */
-mm_translator::~mm_translator() {
-  fout.close();
-  tables.clear();
-  while( not environment.empty() ) environment.pop();
-}
+mm_translator::~mm_translator() { }
 
 /**
  * Translate file
@@ -76,7 +62,7 @@ void mm_translator::emit (const Taco & taco) {
 
 void mm_translator::printQuadArray () {
   for( int idx=0 ; idx<quadArray.size() ; idx++ ) {
-    fout << std::setw(5) << idx << "\t\t" << quadArray[idx] << std::endl;
+    fout << std::setw(5) << idx << "\t\t" << quadArray[idx] << '\n';
   }
 }
 
@@ -183,7 +169,7 @@ bool mm_translator::isTemporary(SymbolRef ref) {
 /* Print the entire symbol table */
 void mm_translator::printSymbolTable() {
   for( int i = 0; i < tables.size() ; i++ )
-    fout << tables[i] << std::endl;
+    fout << tables[i] << '\n';
 }
 
 /* Max type */
@@ -211,66 +197,40 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
   }
 }
 
-/**************************************************/
-
-/* Main translation driver */
-int main( int argc , char * argv[] ){
-  using namespace std ;
-  using namespace yy ;
-
-  if(argc < 2) {
-    cerr << "Enter a .mm file to translate" << endl;
-    return 1;
+void mm_translator::emit_MIC() {
+  int len = file.length();
+  if( file == "-" ) { // scanning from stdin
+    fout.open("mm.out");
+  } else if( len < 3 or file[len-3] != '.' or file[len-2] != 'm' or file[len-1] != 'm' ) {
+    std::cerr << "Fatal error : " << file << " : Not a .mm file" << std::endl;
+    throw 1;
+  } else {
+    std::string outFileName = file.substr(0,file.length()-3) + ".out";
+    fout = std::ofstream(outFileName);
   }
   
-  bool trace_scan = false , trace_parse = false , trace_tacos = false;
-  for(int i=1;i<argc;i++){
-    string cmd = string(argv[i]);
-    if(cmd == "--trace-scan") {
-      trace_scan = true;
-    } else if(cmd == "--trace-parse") {
-      trace_parse = true;
-    } else if(cmd == "--trace-tacos") {
-      trace_tacos = true;      
-    } else {
-      int result;
-      try {
-	mm_translator translator(cmd);
-	translator.trace_parse = trace_parse;
-	translator.trace_scan = trace_scan;
-	translator.trace_tacos = trace_tacos;
-	
-	result = translator.translate();
-	
-	if(result != 0) cerr << cmd << " : Translation failed" << endl;
-	else {
-	  translator.fout << cmd << " : Translated code :" << endl;
-	  translator.fout << "3 Address codes :" << endl;
-	  translator.printQuadArray();
-	  
-	  translator.fout << endl;
-	  for(int i=0;i<100;i++)translator.fout<<'-';
-	  
-	  translator.fout << endl;
-	  translator.fout << endl << "Symbol tables : " << endl;
-	  translator.printSymbolTable();
-	  
-	  for(int i=0;i<100;i++)translator.fout<<'-';
-	  translator.fout << endl;
-	  translator.fout << endl << "String table : " << endl;
-	  for(int i = 1 ; i < translator.stringTable.size() ; i++ )
-	    translator.fout << i << " : " << translator.stringTable[i] << endl;
-	  translator.fout << endl;
-	  
-	  for(int i=0;i<100;i++)translator.fout<<'*';
-	  translator.fout << endl;
-	  
-	  cout << cmd << " : Translation completed successfully " << endl;
-	}
-      } catch ( ... ) { } // "fatal" errors
-      
-    }
-  }
+  fout << file << " : Translated code :\n";
+  fout << "3 Address codes :\n";
+  printQuadArray();
   
-  return 0;
+  fout << '\n';
+  for(int i=0;i<100;i++)fout<<'-';
+  
+  fout << '\n';
+  fout << std::endl << "Symbol tables : \n";
+  printSymbolTable();
+  
+  for(int i=0;i<100;i++)fout<<'-';
+  fout << '\n';
+  fout << std::endl << "String table : \n";
+  for(int i = 1 ; i < stringTable.size() ; i++ )
+    fout << i << " : " << stringTable[i] << '\n';
+  fout << '\n';
+  
+  for(int i=0;i<100;i++)fout<<'*';
+  fout << '\n';
+  
+  fout.close();
 }
+
+/**************************************************************************************************/

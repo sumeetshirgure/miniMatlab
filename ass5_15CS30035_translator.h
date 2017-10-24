@@ -143,7 +143,9 @@ public:
 
   /* Table of string constants. */
   std::vector<std::string> stringTable;
-  
+
+  /* Emits machine independant code and data. */
+  void emit_MIC();
 };
 
 #endif /* ! MM_TRANSLATOR_H */

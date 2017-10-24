@@ -1089,6 +1089,9 @@ declarator "=" expression {
       RHR = typeCheck(RHR,defSym.type,true,translator,*this,@3);
     }
     Symbol & CRHS = translator.getSymbol(RHR);
+    if( translator.currentEnvironment() == 0 and !CRHS.isConstant ) {
+      throw syntax_error(@$,"Global non-constant initialization not allowed.");
+    }
     Symbol & LHS = translator.getSymbol($1);
     translator.emit(Taco(OP_COPY,LHS.id,CRHS.id));// LHS = CRHS
     LHS.isInitialized = CRHS.isConstant;
@@ -1330,12 +1333,20 @@ initializer_row :
 expression {
   DataType elemType = MM_DOUBLE_TYPE;
   SymbolRef E = typeCheck($1.symbol,elemType,true,translator,*this,@1);
+  Symbol & elem = translator.getSymbol(E);
+  if( translator.currentEnvironment() == 0 and !elem.isConstant ) {
+    throw syntax_error(@$,"Non-constant global initializer.");
+  }
   $$.push_back( E );
 } |
 initializer_row "," expression {
   std::swap($$,$1);
   DataType elemType = MM_DOUBLE_TYPE;
   SymbolRef E = typeCheck($3.symbol,elemType,true,translator,*this,@3);
+  Symbol & elem = translator.getSymbol(E);
+  if( translator.currentEnvironment() == 0 and !elem.isConstant ) {
+    throw syntax_error(@3,"Non-constant global initializer.");
+  }
   $$.push_back( E );
 } ;
 
