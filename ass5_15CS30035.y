@@ -971,13 +971,6 @@ unary_expression "=" assignment_expression {
 	Symbol & CRHS = translator.getSymbol(RHR);
 	Symbol & CLHS = translator.getSymbol($$.symbol);
 	translator.emit(Taco(OP_COPY,CLHS.id,CRHS.id));// LHS = RHS
-	CLHS.isInitialized = CRHS.isInitialized;
-	if( CLHS.isInitialized ){
-	  if( lType == MM_CHAR_TYPE ) CLHS.value.charVal = CRHS.value.charVal;
-	  else if( lType == MM_INT_TYPE ) CLHS.value.intVal = CRHS.value.intVal;
-	  else if( lType == MM_DOUBLE_TYPE ) CLHS.value.doubleVal = CRHS.value.doubleVal;
-	}
-	CLHS.isConstant = CRHS.isConstant;
       } else if( lType.isPointer() ) {
 	Symbol & RHS = translator.getSymbol($3.symbol);
 	if( RHS.type == lType ) {
@@ -1512,16 +1505,28 @@ jump_statement :
   dereference(translator,$2);
   unsigned int currEnv = translator.currentEnvironment() ;
   unsigned int parent = translator.tables[currEnv].parent ;
-  if( translator.tables[currEnv].table[0].type == MM_VOID_TYPE ) {
-    throw syntax_error(@$,"Void function cannot return anything.");
-  }
   while( parent != 0 ) {
     currEnv = parent ; parent = translator.tables[currEnv].parent ;
   }
-  Symbol & retSym = translator.getSymbol($2.symbol);
-  if( translator.tables[currEnv].table[0].type != retSym.type ) {
-    throw syntax_error(@$,"Return type mismatch.");
+
+  DataType expectedType = translator.tables[currEnv].table[0].type;
+  if( expectedType == MM_VOID_TYPE ) {
+    throw syntax_error(@$,"Void function cannot return anything.");
   }
+  
+  Symbol & rhs = translator.getSymbol($2.symbol);
+  if(  expectedType != rhs.type ) {
+    if( rhs.type.isStaticMatrix() and expectedType.isMatrix() ) {// allow
+    } else { // try conversion
+      try {
+	$2.symbol = typeCheck( $2.symbol , expectedType , true , translator , *this , @2 );
+      } catch( ... ) {
+	throw syntax_error(@$,"Return type mismatch.");
+      }
+    }
+  }
+
+  Symbol & retSym = translator.getSymbol($2.symbol);
   translator.emit(Taco(OP_RETURN,retSym.id));
 } ;
 
