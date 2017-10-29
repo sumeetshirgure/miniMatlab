@@ -23,8 +23,10 @@ public:
   
   // Elements of the record.
   std::vector< Record > acR;
+  // Function variables.
+  std::vector< Symbol > vars;
   // Function parameters.
-  std::vector< Record > params;
+  std::vector< Symbol > params;
   // Table of constants.
   std::vector< Symbol > toC;
   Symbol retVal;
@@ -76,6 +78,4 @@ public:
   /* Function code generation. */
   void emitFunction(unsigned int, unsigned int, unsigned int);
   
-  /* Write strings to read-only data segment. */
-  void printStringTable();
 };

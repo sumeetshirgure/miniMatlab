@@ -46,6 +46,12 @@ public:
   
   /* Checks if two type are not the same */
   bool operator != (const DataType &) ;
+
+  // Checks if this type is char or int
+  bool isIntegerType();
+  
+  // Checks if this type is char , int or double
+  bool isScalarType();
   
   /* Checks if type is a static matrix */
   bool isStaticMatrix();

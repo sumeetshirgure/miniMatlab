@@ -31,6 +31,16 @@ bool DataType::operator!=(const DataType & type) {
   return pointers != type.pointers or rows != type.rows or cols != type.cols ;
 }
 
+// Checks if this type is char or int
+bool DataType::isIntegerType() {
+  return *this == MM_CHAR_TYPE or *this == MM_INT_TYPE ;
+}
+  
+// Checks if this type is char , int or double
+bool DataType::isScalarType() {
+  return *this == MM_CHAR_TYPE or *this == MM_INT_TYPE or *this == MM_DOUBLE_TYPE ;
+}
+
 bool DataType::isStaticMatrix() {
   return pointers==0 and rows != 0 and cols != 0 ;
 }

@@ -37,7 +37,6 @@ void mm_x86_64::generateTargetCode() {
     }
   }
   
-  printStringTable();
 }
 
 void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int rootId) {
@@ -57,25 +56,66 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
   dft(mic,rootId);
   
-  std::cerr << "-->" << rootId << std::endl;
-  
-  std::cerr << " ConsTable : " << std::endl;
-  for(Symbol & symbol : toC) {
-    std::cerr << symbol << std::endl;
-  }
-  
-  std::cerr << std::endl << " ACR : " << std::endl;
-  for(auto & record : acR) {
-    Symbol & symbol = record.first;
-    std::cerr << symbol << std::endl;
+  // Populate stack
+  std::vector< Record > callerStack , calleeStack;
+  unsigned int callerOffset = 16 , calleeOffset = 0;
+  // (%rsp) contains %rbp and 8(%rsp) contains %rip of caller
+  unsigned int stdCount = 0 , xmmCount = 0; // Number of parameters passed through standard / X registers
+  for(auto & symbol : params) {
+    bool onCallerStack = false;
+    if( symbol.type == MM_DOUBLE_TYPE ) {
+      if( xmmCount >= 8 ) onCallerStack = true;
+    } else {
+      if( stdCount >= 6 ) onCallerStack = true;
+    }
+    if( symbol.type.isIntegerType() ) { // 4 bytes
+      if( onCallerStack ) {
+	callerStack.emplace_back( symbol , callerOffset );
+	callerOffset += 4;
+      } else {
+	calleeOffset -= 4;
+	calleeStack.emplace_back( symbol , calleeOffset );
+      }
+    } else { // Matrix / Double / any Pointer : 8 bytes
+      if( onCallerStack ) {
+	// Align to 8-byte boundary
+	if( (callerOffset & 7) != 0 ) callerOffset += 4;
+	callerStack.emplace_back( symbol , callerOffset );
+	callerOffset += 8;
+      } else { //
+	// Align to 8-byte boundary
+	if( (calleeOffset & 7) != 0 ) calleeOffset -= 4;
+	calleeOffset -= 8;
+	calleeStack.emplace_back( symbol , calleeOffset );
+      }
+    }
+    if( symbol.type == MM_DOUBLE_TYPE ) xmmCount++;
+    else stdCount++;
   }
 
-  std::cerr << std::endl << " Params : " << std::endl;
-  for(auto & record : params) {
-    Symbol & symbol = record.first;
-    std::cerr << symbol << std::endl;
+  // Push all variables on stack
+  for(auto & symbol : vars) {
+    if( symbol.type.isIntegerType() ) { // 4 bytes
+      calleeOffset -= 4;
+      calleeStack.emplace_back( symbol , calleeOffset );
+    } else {
+      if( (calleeOffset & 7) != 0 ) calleeOffset -= 4;
+      calleeOffset -= 8;
+      calleeStack.emplace_back( symbol , calleeOffset );
+    }
   }
 
+  std::reverse( callerStack.begin() , callerStack.end() ) ;
+  acR.clear() ; std::swap( acR , callerStack );
+  acR.insert( acR.end() , calleeStack.begin() , calleeStack.end());
+  calleeStack.clear();
+
+  // Construct symbol location map
+  for( int index = 0; index < acR.size() ; index++ ) {
+    Record & record = acR[index];
+    locMap[record.first.id] = index ;
+    // std::cerr << record.first << " @ " << record.second << std::endl;
+  }
 }
 
 ActivationRecord::~ActivationRecord() { }
@@ -92,20 +132,11 @@ void ActivationRecord::dft(mm_translator& mic, unsigned int tableId) {
     } else if( symbol.symType == SymbolType::CONST ) {
       toC.emplace_back( symbol );
     } else if( symbol.symType == SymbolType::PARAM ) {
-      params.emplace_back( symbol , 0 );
-    } else { // LOCAL TEMP
-      acR.emplace_back( symbol , 0 );
+      params.emplace_back( symbol );
+    } else { // LOCAL or TEMPorary variables
+      vars.emplace_back( symbol );
     }
   }
-}
-
-/* Print string table contents in read-only memory section. */
-void mm_x86_64::printStringTable() {
-  std::vector<std::string> & stringTable = mic.stringTable;
-  if(stringTable.size() > 1)
-    fout << "\t.section\t.rodata\n";
-  for( int idx = 1 ; idx < stringTable.size() ; idx++ )
-    fout << ".LS" << idx << ":\t.string\t" << stringTable[idx] << "\n";
 }
 
 /**************************************************************************************************/
