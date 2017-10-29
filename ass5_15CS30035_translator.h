@@ -28,11 +28,10 @@ YY_DECL;
 #include "expressions.h"
 
 /* A map from string identifiers to symbols */
-typedef __gnu_pbds::trie<std::string,
-			 SymbolRef,
-			 __gnu_pbds::trie_string_access_traits<>,
-			 __gnu_pbds::pat_trie_tag, // PATRICIA Trie
-			 __gnu_pbds::trie_prefix_search_node_update> IDMap;
+typedef __gnu_pbds::trie< std::string,  SymbolRef ,
+			 __gnu_pbds::trie_string_access_traits<> ,
+			 __gnu_pbds::pat_trie_tag , // PATRICIA Trie
+			 __gnu_pbds::trie_prefix_search_node_update > IDMap;
 
 /**
    Minimatlab translator class. An mm_translator object is used

@@ -206,7 +206,7 @@ void mm_translator::emit_MIC() {
     throw 1;
   } else {
     std::string outFileName = file.substr(0,file.length()-3) + ".out";
-    fout = std::ofstream(outFileName);
+    fout.open(outFileName);
   }
   
   fout << file << " : Translated code :\n";

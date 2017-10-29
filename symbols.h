@@ -90,7 +90,7 @@ public:
   /* No of parameter entries in the table (in case of functions) */
   unsigned int params;
 
-  /* If this function is defined or not. */
+  /* If this is a function and if it is defined or not. */
   bool isDefined;
   
   // construct ST

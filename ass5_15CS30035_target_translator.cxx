@@ -10,7 +10,7 @@ mm_x86_64::mm_x86_64 (mm_translator & translator)
     throw 1;
   } else {
     std::string outFileName = mic.file.substr(0,mic.file.length()-3) + ".asm";
-    fout = std::ofstream(outFileName);
+    fout.open(outFileName);
   }
 }
 
@@ -20,9 +20,83 @@ mm_x86_64::~mm_x86_64 () {
 
 void mm_x86_64::generateTargetCode() {
 
-  // TODO : Generate activation records
+  // TODO : Handle global declarations.
+  
+  std::vector< Taco > & QA = mic.quadArray;
+  for(unsigned int addr = 0; addr < QA.size() ; ) {
+    if( QA[addr].opCode == OP_FUNC_START ) {
+      unsigned int nxtAddr = addr;
+      for( ; nxtAddr < QA.size() and QA[nxtAddr].opCode != OP_FUNC_END ; nxtAddr++ ) ;
+      std::string funcName = "::" + QA[addr].z;
+      SymbolRef funcRef = mic.lookup(funcName);
+      unsigned int rootId = mic.getSymbol( funcRef ).child;
+      emitFunction(addr , nxtAddr, rootId);
+      addr = nxtAddr + 1;
+    } else {
+      addr++;
+    }
+  }
   
   printStringTable();
+}
+
+void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int rootId) {
+  // Populate stack
+  ActivationRecord stack(mic,rootId);
+  
+  /* TODO : Emit function header */
+  // TODO : Set up base and stack pointers
+  // TODO : Push parameters onto the stack
+  
+  // TODO : emit rtlops
+  
+  /* TODO : Emit function footer */
+  
+}
+
+ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
+  dft(mic,rootId);
+  
+  std::cerr << "-->" << rootId << std::endl;
+  
+  std::cerr << " ConsTable : " << std::endl;
+  for(Symbol & symbol : toC) {
+    std::cerr << symbol << std::endl;
+  }
+  
+  std::cerr << std::endl << " ACR : " << std::endl;
+  for(auto & record : acR) {
+    Symbol & symbol = record.first;
+    std::cerr << symbol << std::endl;
+  }
+
+  std::cerr << std::endl << " Params : " << std::endl;
+  for(auto & record : params) {
+    Symbol & symbol = record.first;
+    std::cerr << symbol << std::endl;
+  }
+
+}
+
+ActivationRecord::~ActivationRecord() { }
+
+/* Perform a depth first traversal. */
+void ActivationRecord::dft(mm_translator& mic, unsigned int tableId) {
+  std::vector< Symbol > & table = mic.tables[tableId].table;
+  for(unsigned int idx = 0; idx < table.size() ; idx++ ) {
+    Symbol & symbol = table[idx];
+    if( symbol.child != 0 ) {
+      dft(mic,symbol.child);
+    } else if( symbol.symType == SymbolType::RETVAL ) {
+      retVal = symbol;
+    } else if( symbol.symType == SymbolType::CONST ) {
+      toC.emplace_back( symbol );
+    } else if( symbol.symType == SymbolType::PARAM ) {
+      params.emplace_back( symbol , 0 );
+    } else { // LOCAL TEMP
+      acR.emplace_back( symbol , 0 );
+    }
+  }
 }
 
 /* Print string table contents in read-only memory section. */
@@ -36,15 +110,10 @@ void mm_x86_64::printStringTable() {
 
 /**************************************************************************************************/
 
-/* Main translation driver */
+/* Main compilation driver */
 int main( int argc , char * argv[] ){
   using namespace std ;
   using namespace yy ;
-
-  if(argc < 2) {
-    cerr << "Enter a .mm file to translate" << endl;
-    return 1;
-  }
   
   bool trace_scan = false , trace_parse = false
     , trace_tacos = false , emit_mic = false;
@@ -61,6 +130,7 @@ int main( int argc , char * argv[] ){
       emit_mic = true;
     } else {
       int result;
+      
       try {
 	mm_translator translator(cmd);
 	translator.trace_parse = trace_parse;
@@ -81,7 +151,6 @@ int main( int argc , char * argv[] ){
 	/* Construct a target code generator */
 	mm_x86_64 generator(translator);
 	generator.generateTargetCode();
-	
       } catch ( ... ) {
 	cerr << cmd << " : Compilation failed" << endl;
       }
