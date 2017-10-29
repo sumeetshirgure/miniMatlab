@@ -42,14 +42,52 @@ void mm_x86_64::generateTargetCode() {
 void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int rootId) {
   // Populate stack
   ActivationRecord stack(mic,rootId);
+
+  // Function header
+  SymbolTable & rootTable = mic.tables[rootId];
+  fout << "\t.text\n"; // Text segment
+  fout << "\t.globl\t" << rootTable.name << '\n'; // Make declaration visible to linker
+  fout << "\t.type\t" << rootTable.name << ", @function\n"; // Function type declaration
+  fout << rootTable.name << ":\n";
   
-  /* TODO : Emit function header */
-  // TODO : Set up base and stack pointers
-  // TODO : Push parameters onto the stack
+  // Set up base and stack pointers
+  const size_t BP = 6 , SP = 7;
+  fout << "\tpushq\t" << Regs[BP][QUAD] << '\n' ;
+  fout << "\tmovq\t" << Regs[SP][QUAD]  << " , " << Regs[BP][QUAD] << '\n' ;
+
+  // Align with nearest 16-byte mark
+  int frameSize = stack.acR.empty() ? 0 : stack.acR.back().second ; // last offset
+  while( frameSize & 15 ) frameSize += frameSize & -frameSize;
+  if( frameSize > 0 )
+    fout << "\tsubq\t$" << frameSize << " , " << Regs[SP][QUAD] << '\n';
   
-  // TODO : emit rtlops
+  // Push parameters onto the stack
+  const static int argRegs[] = { 5, 4, 3, 2, 8, 9 };
+  int stdRegs = 0 , fpRegs = 0 ;
+  for( Record & record : stack.acR ) {
+    int location = record.second;
+    if( location > 0 ) continue; // on caller side of stack
+    Symbol & symbol = record.first;
+    if( symbol.symType == SymbolType::PARAM ) {
+      if( symbol.type == MM_DOUBLE_TYPE ) {
+	fout << "\tmovsd\t" << XReg << fpRegs++ << " , " << location << "(%rbp)\n" ;
+      } else if( symbol.type == MM_CHAR_TYPE ) {
+	fout << "\tmovb\t" << Regs[argRegs[stdRegs++]][BYTE] << " , " << location << "(%rbp)\n" ;
+      } else if( symbol.type == MM_INT_TYPE ) {
+	fout << "\tmovl\t" << Regs[argRegs[stdRegs++]][LONG] << " , " << location << "(%rbp)\n" ;
+      } else { // poinrix / Matter
+	fout << "\tmovq\t" << Regs[argRegs[stdRegs++]][QUAD] << " , " << location << "(%rbp)\n" ;
+      }
+    }
+  }
+  
+  // TODO : emit rtlops , while populating `only required' constants
   
   /* TODO : Emit function footer */
+  // Emit the return label, deallocate all memory on heap , and leave
+  fout << "\tleave\n\tret\n" ; // return statement
+  fout << "\t.size\t" << rootTable.name << ", .-" << rootTable.name << '\n' ;
+  // TODO : fout << "\t.section\t.rodata\n" ; // Dump all constants if non-empty
   
 }
 
@@ -114,8 +152,11 @@ ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
   for( int index = 0; index < acR.size() ; index++ ) {
     Record & record = acR[index];
     locMap[record.first.id] = index ;
-    // std::cerr << record.first << " @ " << record.second << std::endl;
+    //std::cerr << record.first << " @ " << record.second << std::endl;
   }
+  
+  params.clear();
+  vars.clear();
 }
 
 ActivationRecord::~ActivationRecord() { }
