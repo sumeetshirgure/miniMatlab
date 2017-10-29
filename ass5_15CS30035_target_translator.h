@@ -37,17 +37,15 @@ public:
 class mm_x86_64{
 public:
 
-  static const size_t BYTE = 0 , LONG = 1 , QUAD = 2;
+  static const size_t BYTE = 2 , LONG = 1 , QUAD = 0;
   
   // x86 Register array
-  static constexpr const char * Regs[18][3] = {
+  const std::string Regs[16][3] = {
     { "%rax" , "%eax" , "%al" } ,
     { "%rbx" , "%ebx" , "%bl" } ,
     { "%rcx" , "%ebx" , "%bl" } ,
     { "%rdx" , "%edx" , "%dl" } ,
     { "%rsi" , "%esi" , "%sil" } ,
-    { "%rdi" , "%edi" , "%dil" } ,
-    { "%rdi" , "%edi" , "%dil" } ,
     { "%rdi" , "%edi" , "%dil" } ,
     { "%rbp" , "%ebp" , "%bpl" } ,
     { "%rsp" , "%esp" , "%spl" } ,
@@ -59,9 +57,7 @@ public:
     { "%r13" , "%r13d" , "%r13b" } ,
     { "%r14" , "%r14d" , "%r14b" } ,
     { "%r15" , "%r15d" , "%r15b" }
-  } ;
-  
-  static constexpr const char * XReg = "%xmm" ;
+  } , XReg = "%xmm" ;
   
   mm_x86_64(mm_translator&);
   virtual ~mm_x86_64();
