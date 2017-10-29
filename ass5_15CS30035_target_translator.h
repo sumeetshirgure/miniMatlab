@@ -34,6 +34,33 @@ public:
 /* A class for generation of x86-64 miniMatlab code. */
 class mm_x86_64{
 public:
+
+  static const size_t BYTE = 0 , LONG = 1 , QUAD = 2;
+  
+  // x86 Register array
+  static constexpr const char * Regs[18][3] = {
+    { "%rax" , "%eax" , "%al" } ,
+    { "%rbx" , "%ebx" , "%bl" } ,
+    { "%rcx" , "%ebx" , "%bl" } ,
+    { "%rdx" , "%edx" , "%dl" } ,
+    { "%rsi" , "%esi" , "%sil" } ,
+    { "%rdi" , "%edi" , "%dil" } ,
+    { "%rdi" , "%edi" , "%dil" } ,
+    { "%rdi" , "%edi" , "%dil" } ,
+    { "%rbp" , "%ebp" , "%bpl" } ,
+    { "%rsp" , "%esp" , "%spl" } ,
+    { "%r8" , "%r8d" , "%r8b" } ,
+    { "%r9" , "%r9d" , "%r9b" } ,
+    { "%r10" , "%r10d" , "%r10b" } ,
+    { "%r11" , "%r11d" , "%r11b" } ,
+    { "%r12" , "%r12d" , "%r12b" } ,
+    { "%r13" , "%r13d" , "%r13b" } ,
+    { "%r14" , "%r14d" , "%r14b" } ,
+    { "%r15" , "%r15d" , "%r15b" }
+  } ;
+  
+  static constexpr const char * XReg = "%xmm" ;
+  
   mm_x86_64(mm_translator&);
   virtual ~mm_x86_64();
   
