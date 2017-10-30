@@ -42,7 +42,7 @@ void mm_x86_64::generateTargetCode() {
 void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int rootId) {
   // Populate stack
   ActivationRecord stack(mic,rootId);
-
+  
   // Function header
   SymbolTable & rootTable = mic.tables[rootId];
   fout << "\t.text\n"; // Text segment
@@ -56,7 +56,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   fout << "\tmovq\t" << Regs[SP][QUAD]  << " , " << Regs[BP][QUAD] << '\n' ;
 
   // Align with nearest 16-byte mark
-  int frameSize = stack.acR.empty() ? 0 : stack.acR.back().second ; // last offset
+  int frameSize = stack.acR.empty() ? 0 : -stack.acR.back().second ; // last offset
   while( frameSize & 15 ) frameSize += frameSize & -frameSize;
   if( frameSize > 0 )
     fout << "\tsubq\t$" << frameSize << " , " << Regs[SP][QUAD] << '\n';
@@ -82,6 +82,24 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   }
   
   // TODO : emit rtlops , while populating `only required' constants
+
+  std::vector<int> marks;
+  // Mark potential target instructions of all gotos.
+  for(unsigned int index = from + 1; index < to ; index++ ) {
+    const Taco & quad = mic.quadArray[index];
+    if( quad.isJump() ) {
+      marks.emplace_back( atoi(quad.z.c_str()) );
+    }
+  }
+
+  std::sort( marks.begin() , marks.end() , std::greater<int>() );
+  for(unsigned int index = from + 1; index < to ; index++ ) {
+    if( not marks.empty() and marks.back() == index ) {
+      fout << ".L" << index << ":\n";
+      marks.pop_back();
+    }
+    fout << "\t#" << index << "\t[" << mic.quadArray[index] << "]\n";
+  }
   
   /* TODO : Emit function footer */
   // Emit the return label, deallocate all memory on heap , and leave

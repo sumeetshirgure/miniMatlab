@@ -1,5 +1,9 @@
 #include "quads.h"
 
+bool Taco::isJump() const {
+  return OP_IF_VAL <= opCode and opCode <= OP_GOTO ;
+}
+
 std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   switch(taco.opCode) {
   case OP_PLUS:return out<<taco.z<<" = "<<taco.x<<" + "<<taco.y;
