@@ -1,7 +1,7 @@
 #include "ass5_15CS30035_translator.h"
 
-/* A map from string identifiers to offsets on activation records. */
-typedef __gnu_pbds::trie<std::string, int ,
+/* A map from string identifiers to locations on tables. */
+typedef __gnu_pbds::trie<std::string, unsigned int ,
 			 __gnu_pbds::trie_string_access_traits<> ,
 			 __gnu_pbds::pat_trie_tag ,
 			 __gnu_pbds::trie_prefix_search_node_update > LocMap ;
@@ -74,4 +74,9 @@ public:
   /* Function code generation. */
   void emitFunction(unsigned int, unsigned int, unsigned int);
   
+  /* Emit target code corresponding to a quad. */
+  void emitQuadOps(const Taco &,const ActivationRecord &);
+
+  /* Auxiliary data */
+  std::vector<int> usedConstants; // constant ids actually used
 };

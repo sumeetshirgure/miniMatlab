@@ -23,11 +23,11 @@ unsigned int DataType::getSize() {
   return 2 * SIZE_OF_INT + rows * cols * SIZE_OF_DOUBLE ;
 }
 
-bool DataType::operator==(const DataType & type) {
+bool DataType::operator==(const DataType & type) const {
   return pointers == type.pointers and rows == type.rows and cols == type.cols ;
 }
 
-bool DataType::operator!=(const DataType & type) {
+bool DataType::operator!=(const DataType & type) const {
   return pointers != type.pointers or rows != type.rows or cols != type.cols ;
 }
 

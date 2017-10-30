@@ -42,10 +42,10 @@ public:
   unsigned int getSize() ;
   
   /* Checks if two type are the same */
-  bool operator == (const DataType &) ;
+  bool operator == (const DataType &) const ;
   
   /* Checks if two type are not the same */
-  bool operator != (const DataType &) ;
+  bool operator != (const DataType &) const ;
 
   // Checks if this type is char or int
   bool isIntegerType();

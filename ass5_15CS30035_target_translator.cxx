@@ -81,8 +81,6 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
     }
   }
   
-  // TODO : emit rtlops , while populating `only required' constants
-
   std::vector<int> marks;
   // Mark potential target instructions of all gotos.
   for(unsigned int index = from + 1; index < to ; index++ ) {
@@ -98,15 +96,97 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
       fout << ".L" << index << ":\n";
       marks.pop_back();
     }
-    fout << "\t#" << index << "\t[" << mic.quadArray[index] << "]\n";
+    emitQuadOps( mic.quadArray[index] , stack );
   }
   
   /* TODO : Emit function footer */
-  // Emit the return label, deallocate all memory on heap , and leave
+  // Deallocate all memory on heap , and leave
+  fout << ".L" << to << ":\n";
   fout << "\tleave\n\tret\n" ; // return statement
   fout << "\t.size\t" << rootTable.name << ", .-" << rootTable.name << '\n' ;
   // TODO : fout << "\t.section\t.rodata\n" ; // Dump all constants if non-empty
   
+}
+
+void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) {
+  const size_t BP = 6 ;
+  switch(quad.opCode) {
+
+    /* Conditional jumps */
+  case OP_LT : case OP_LTE : case OP_GT : case OP_GTE : case OP_EQ : case OP_NEQ : {
+    std::string regName , lId , rId, movInstr, cmpInstr;
+
+    auto aRef = stack.locMap.find( quad.x );
+    if( aRef != stack.locMap.end() ) {
+      int pos = aRef->second;
+      const Symbol & lhs = stack.acR[pos].first ;
+      lId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
+      if( lhs.type == MM_DOUBLE_TYPE ) {
+        regName = XReg+"1";
+	movInstr = "movsd"; cmpInstr = "ucomisd";
+      } else if( lhs.type == MM_CHAR_TYPE ) {
+        regName = Regs[1][BYTE];
+	movInstr = "movb"; cmpInstr = "cmpb";
+      } else if( lhs.type == MM_INT_TYPE ) {
+        regName = Regs[1][LONG];
+	movInstr = "movl"; cmpInstr = "cmpl";
+      }
+    } else { // constant literals
+      aRef = stack.constMap.find( quad.x );
+      int id = aRef->second;
+      const Symbol & lhs = stack.toC[id];
+      if( lhs.type == MM_DOUBLE_TYPE ) {
+	lId = "$.LC"+std::to_string(id)+"(%rip)";
+	usedConstants.emplace_back(id);
+	regName = XReg+"1";
+	movInstr = "movsd"; cmpInstr = "ucomisd";
+      } else if( lhs.type == MM_CHAR_TYPE ) {
+	lId = "$"+std::to_string( (int) lhs.value.charVal );
+	movInstr = "movb"; cmpInstr = "cmpb";
+	regName = Regs[1][BYTE];
+      } else if( lhs.type == MM_INT_TYPE ) {
+	lId = "$"+std::to_string( lhs.value.intVal );
+	movInstr = "movl"; cmpInstr = "cmpl";
+	regName = Regs[1][LONG];
+      }
+    }
+    // Move first operand to register
+    fout << '\t' << movInstr << '\t' << lId << " , " << regName << '\n';
+    
+    auto bRef = stack.locMap.find( quad.y );
+    if( bRef != stack.locMap.end() ) {
+      int pos = bRef->second;
+      const Symbol & rhs = stack.acR[pos].first ;
+      rId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
+    } else { // constant literals
+      bRef = stack.constMap.find( quad.y );
+      int id = bRef->second;
+      const Symbol & rhs = stack.toC[id];
+      if( rhs.type == MM_DOUBLE_TYPE )
+	rId = "$.LC"+std::to_string(id)+"(%rip)";
+      else if( rhs.type == MM_CHAR_TYPE )
+	rId = "$"+std::to_string( (int) rhs.value.charVal );
+      else if( rhs.type == MM_INT_TYPE )
+	rId = "$"+std::to_string( rhs.value.intVal );
+    }
+    
+    fout << '\t' << cmpInstr << '\t' << rId << " , " << regName << "\n\t";
+    switch( quad.opCode ) {
+    case OP_LT : fout << "jl" ; break;
+    case OP_LTE : fout << "jle" ; break;
+    case OP_GT : fout << "jg" ; break;
+    case OP_GTE : fout << "jge" ; break;
+    case OP_EQ : fout << "je" ; break;
+    case OP_NEQ : fout << "jne" ; break;
+    default : break;
+    };
+    fout << "\t.L" << quad.z << '\n';
+  } break;
+  case OP_GOTO : {
+    fout << "\tjmp\t.L" << quad.z << '\n';
+  } break;
+  default: fout << "\t#\t[" << quad << "]\n";
+  }
 }
 
 ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
@@ -154,9 +234,9 @@ ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
     if( symbol.type.isIntegerType() ) { // 4 bytes
       calleeOffset -= 4;
       calleeStack.emplace_back( symbol , calleeOffset );
-    } else {
-      if( (calleeOffset & 7) != 0 ) calleeOffset -= 4;
-      calleeOffset -= 8;
+    } else { // Align to 8 byte boundary
+      calleeOffset &= -8;
+      calleeOffset -= symbol.type.getSize();
       calleeStack.emplace_back( symbol , calleeOffset );
     }
   }
@@ -170,7 +250,11 @@ ActivationRecord::ActivationRecord(mm_translator& mic,unsigned int rootId){
   for( int index = 0; index < acR.size() ; index++ ) {
     Record & record = acR[index];
     locMap[record.first.id] = index ;
-    //std::cerr << record.first << " @ " << record.second << std::endl;
+  }
+  
+  for( int index = 0; index < toC.size() ; index++ ) {
+    Symbol & constant = toC[index];
+    constMap[constant.id] = index;
   }
   
   params.clear();
