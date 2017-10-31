@@ -1102,8 +1102,12 @@ type_specifier :
 initialized_declarator_list :
 initialized_declarator | initialized_declarator_list "," initialized_declarator ;
 
-initialized_declarator :
-declarator { } |
+initialized_declarator : declarator {
+  Symbol & symbol = translator.getSymbol($1);
+  if( translator.currentEnvironment() == 0 ) {
+    translator.emit(Taco(OP_DECLARE , symbol.id));
+  }
+} |
 declarator "=" expression {
   Symbol & defSym = translator.getSymbol($1);
   if( defSym.type.isMatrix() ) {
@@ -1148,7 +1152,10 @@ declarator "=" expression {
   } else {
     throw syntax_error(@$,"Syntax error.");
   }
-  
+  Symbol & symbol = translator.getSymbol($1);
+  if( translator.currentEnvironment() == 0 ) {
+    translator.emit(Taco(OP_DECLARE , symbol.id));
+  }
 } |
 declarator "=" "{" initializer_row_list "}" { // for static matrices
   Symbol & matSym = translator.getSymbol($1);
@@ -1166,6 +1173,10 @@ declarator "=" "{" initializer_row_list "}" { // for static matrices
     }// copy all elements
   } else {
     throw syntax_error(@4,"Cannot statically initialize non-static matrices.");
+  }
+  Symbol & symbol = translator.getSymbol($1);
+  if( translator.currentEnvironment() == 0 ) {
+    translator.emit(Taco(OP_DECLARE , symbol.id));
   }
 };
 
@@ -1376,8 +1387,9 @@ initializer_row :
 /* Nested brace initializers are not supported : { {2;3} ; 4 } 
    Hence the non-terminal initializer_row does not again produce initializer */
 expression {
+  SymbolRef E = getScalarBinaryOperand(translator,*this,@1,$1);
   DataType elemType = MM_DOUBLE_TYPE;
-  SymbolRef E = typeCheck($1.symbol,elemType,true,translator,*this,@1);
+  E = typeCheck(E,elemType,true,translator,*this,@1);
   Symbol & elem = translator.getSymbol(E);
   if( translator.currentEnvironment() == 0 and !elem.isConstant ) {
     throw syntax_error(@$,"Non-constant global initializer.");
@@ -1386,8 +1398,9 @@ expression {
 } |
 initializer_row "," expression {
   std::swap($$,$1);
+  SymbolRef E = getScalarBinaryOperand(translator,*this,@3,$3);
   DataType elemType = MM_DOUBLE_TYPE;
-  SymbolRef E = typeCheck($3.symbol,elemType,true,translator,*this,@3);
+  E = typeCheck(E,elemType,true,translator,*this,@3);
   Symbol & elem = translator.getSymbol(E);
   if( translator.currentEnvironment() == 0 and !elem.isConstant ) {
     throw syntax_error(@3,"Non-constant global initializer.");

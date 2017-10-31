@@ -20,9 +20,93 @@ mm_x86_64::~mm_x86_64 () {
 
 void mm_x86_64::generateTargetCode() {
 
-  // TODO : Handle global declarations.
-  
+  // Handle global declarations.
+  std::vector< Symbol > & globalTable = mic.globalTable().table;
   std::vector< Taco > & QA = mic.quadArray;
+  
+  fout << "\t.data\n";
+  for(unsigned int index = 0 , addr = 0; index < globalTable.size() ; index++) {
+    Symbol & symbol = globalTable[index];
+    if( symbol.symType != SymbolType::LOCAL ) continue;
+    DataType type = symbol.type ;
+    if( type == MM_FUNC_TYPE ) continue;
+    std::string sId = symbol.id , name = sId.substr(2,sId.length()-2);
+    if( type.isPointer() ) {
+      fout << "\t.comm\t" << name << ",8,8\n" ;
+    } else if( type == MM_CHAR_TYPE ) {
+      if( !symbol.isInitialized ) {
+	fout << "\t.comm\t" << name << ",1,1\n" ;
+      } else {
+	fout << "\t.globl\t" << name
+	     << "\n\t.type\t" << name << ", @object"
+	     << "\n\t.size\t" << name << ", 1\n"
+	     << name << ":\n\t.byte\t" << (int) symbol.value.charVal << '\n';
+      }
+      for( ; addr < QA.size() ; addr++ ) {
+	const Taco & quad = QA[addr];
+	if( quad.opCode == OP_DECLARE and quad.z == sId ) break;
+      }
+    } else if( type == MM_INT_TYPE ) {
+      if( !symbol.isInitialized ) {
+	fout << "\t.comm\t" << name << ",4,4\n" ;
+      } else {
+	fout << "\t.globl\t" << name
+	     << "\n\t.align\t4"
+	     << "\n\t.type\t" << name << ", @object"
+	     << "\n\t.size\t" << name << ", 4\n"
+	     << name << ":\n\t.long\t" << symbol.value.intVal << '\n';
+      }
+      for( ; addr < QA.size() ; addr++ ) {
+	const Taco & quad = QA[addr];
+	if( quad.opCode == OP_DECLARE and quad.z == sId ) break;
+      }
+    } else if( type == MM_DOUBLE_TYPE ) {
+      if( !symbol.isInitialized ) {
+	fout << "\t.comm\t" << name << ",8,8\n" ;
+      } else {
+	int *ptr = (int*) (&symbol.value.doubleVal);
+	fout << "\t.globl\t" << name
+	     << "\n\t.align\t8"
+	     << "\n\t.type\t" << name << ", @object"
+	     << "\n\t.size\t" << name << ", 8\n"
+	     << name << ":\n\t.long\t" << ptr[0]
+	     << "\n\t.long\t" << ptr[1] << '\n';
+      }
+      for( ; addr < QA.size() ; addr++ ) {
+	const Taco & quad = QA[addr];
+	if( quad.opCode == OP_DECLARE and quad.z == sId ) break;
+      }
+    } else { // Matrix
+      int remSize = symbol.type.getSize();
+      fout << "\t.globl\t" << name
+	   << "\n\t.align\t16"
+	   << "\n\t.type\t" << name << ", @object"
+	   << "\n\t.size\t" << name << ", " << remSize << '\n'
+	   << name << ':' ;
+      for( ; addr < QA.size() ; addr++ ) {
+	const Taco & quad = QA[addr];
+	if( quad.opCode == OP_DECLARE and quad.z == sId ) break;
+	if( quad.opCode == OP_LXC and quad.z == sId ) {
+	  if( quad.x == "0" ) {
+	    fout << "\n\t.long\t" << symbol.type.rows ;
+	    remSize -= 4;
+	  } else if( quad.x == "4" ) {
+	    fout << "\n\t.long\t" << symbol.type.cols ;
+	    remSize -= 4;
+	  } else {
+	    Symbol & sym = mic.getSymbol( mic.lookup( quad.y ) );
+	    int *ptr = (int*) (&sym.value.doubleVal);
+	    fout << "\n\t.long\t" << ptr[0] << "\n\t.long\t" << ptr[1];
+	    remSize -= 8;
+	  }
+	}
+      }
+      if( remSize > 0 ) fout << "\n\t.zero\t" << remSize ;
+      fout << '\n';
+    }
+  }
+
+  // Emit RTL operations.
   for(unsigned int addr = 0; addr < QA.size() ; ) {
     if( QA[addr].opCode == OP_FUNC_START ) {
       unsigned int nxtAddr = addr;
@@ -96,7 +180,9 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
       fout << ".L" << index << ":\n";
       marks.pop_back();
     }
-    emitQuadOps( mic.quadArray[index] , stack );
+    const Taco & quad = mic.quadArray[index];
+    if( quad.isJump() ) emitJumpOps( quad , stack , mic);
+    else fout << "\t#\t[" << quad << "]\n"; // TODO
   }
   
   /* TODO : Emit function footer */
@@ -108,10 +194,9 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   
 }
 
-void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) {
+void mm_x86_64::emitJumpOps(const Taco & quad , const ActivationRecord & stack, mm_translator & mic) {
   const size_t BP = 6 ;
   switch(quad.opCode) {
-
     /* Conditional jumps */
   case OP_LT : case OP_LTE : case OP_GT : case OP_GTE : case OP_EQ : case OP_NEQ : {
     std::string regName , lId , rId, movInstr, cmpInstr;
@@ -122,39 +207,43 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
       const Symbol & lhs = stack.acR[pos].first ;
       lId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
       if( lhs.type == MM_DOUBLE_TYPE ) {
-        regName = XReg+"1";
-	movInstr = "movsd"; cmpInstr = "ucomisd";
+        regName = XReg+"1"; movInstr = "movsd"; cmpInstr = "ucomisd";
       } else if( lhs.type == MM_CHAR_TYPE ) {
-        regName = Regs[1][BYTE];
-	movInstr = "movb"; cmpInstr = "cmpb";
+        regName = Regs[1][BYTE]; movInstr = "movb"; cmpInstr = "cmpb";
       } else if( lhs.type == MM_INT_TYPE ) {
-        regName = Regs[1][LONG];
-	movInstr = "movl"; cmpInstr = "cmpl";
+        regName = Regs[1][LONG]; movInstr = "movl"; cmpInstr = "cmpl";
       } else { // pointers
-	regName = Regs[1][QUAD];
-	movInstr = "movq"; cmpInstr = "cmpq";
+	regName = Regs[1][QUAD]; movInstr = "movq"; cmpInstr = "cmpq";
       }
-    } else { // constant literals
-      aRef = stack.constMap.find( quad.x );
+    } else if( ( aRef = stack.constMap.find( quad.x ) ) != stack.constMap.end() ) { // constant literals
       int id = aRef->second;
       const Symbol & lhs = stack.toC[id];
       if( lhs.type == MM_DOUBLE_TYPE ) {
 	lId = "$.LC"+std::to_string(id)+"(%rip)";
-	usedConstants.emplace_back(id);
-	regName = XReg+"1";
+	usedConstants.emplace_back(id); regName = XReg+"1";
 	movInstr = "movsd"; cmpInstr = "ucomisd";
       } else if( lhs.type == MM_CHAR_TYPE ) {
 	lId = "$"+std::to_string( (int) lhs.value.charVal );
-	movInstr = "movb"; cmpInstr = "cmpb";
-	regName = Regs[1][BYTE];
+	movInstr = "movb"; cmpInstr = "cmpb"; regName = Regs[1][BYTE];
       } else if( lhs.type == MM_INT_TYPE ) {
 	lId = "$"+std::to_string( lhs.value.intVal );
-	movInstr = "movl"; cmpInstr = "cmpl";
-	regName = Regs[1][LONG];
+	movInstr = "movl"; cmpInstr = "cmpl"; regName = Regs[1][LONG];
       } else { // string
 	lId = "$.LS"+std::to_string( lhs.value.intVal )+"(%rip)";
-	regName = Regs[1][QUAD];
-	movInstr = "movq"; cmpInstr = "cmpq";
+	movInstr = "movq"; cmpInstr = "cmpq"; regName = Regs[1][QUAD];
+      }
+    } else { // global variables
+      SymbolRef globalRef = mic.lookup(quad.x) ;
+      Symbol & lhs = mic.getSymbol( globalRef );
+      lId = quad.x.substr(2,quad.x.length()-2)+"(%rip)";
+      if( lhs.type == MM_DOUBLE_TYPE ) {
+	regName = XReg+"1"; movInstr = "movsd"; cmpInstr = "ucomisd";
+      } else if( lhs.type == MM_CHAR_TYPE ) {
+	movInstr = "movb"; cmpInstr = "cmpb"; regName = Regs[1][BYTE];
+      } else if( lhs.type == MM_INT_TYPE ) { //
+	movInstr = "movl"; cmpInstr = "cmpl"; regName = Regs[1][LONG];
+      } else { // pointer
+	movInstr = "movq"; cmpInstr = "cmpq"; regName = Regs[1][QUAD];
       }
     }
     // Move first operand to register
@@ -165,8 +254,7 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
       int pos = bRef->second;
       const Symbol & rhs = stack.acR[pos].first ;
       rId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
-    } else { // constant literals
-      bRef = stack.constMap.find( quad.y );
+    } else if( ( bRef = stack.constMap.find( quad.y ) ) != stack.constMap.end() ) { // constant literals
       int id = bRef->second;
       const Symbol & rhs = stack.toC[id];
       if( rhs.type == MM_DOUBLE_TYPE )
@@ -177,6 +265,8 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
 	rId = "$"+std::to_string( rhs.value.intVal );
       else // string
 	rId = "$.LS"+std::to_string( rhs.value.intVal )+"(%rip)";
+    } else { // global variables
+      rId = quad.y.substr(2,quad.y.length()-2)+"(%rip)";
     }
     
     fout << '\t' << cmpInstr << '\t' << rId << " , " << regName << "\n\t";
@@ -194,7 +284,7 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
   case OP_GOTO : {
     fout << "\tjmp\t.L" << quad.z << '\n';
   } break;
-  default: fout << "\t#\t[" << quad << "]\n";
+  default : break;
   }
 }
 

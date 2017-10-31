@@ -74,8 +74,8 @@ public:
   /* Function code generation. */
   void emitFunction(unsigned int, unsigned int, unsigned int);
   
-  /* Emit target code corresponding to a quad. */
-  void emitQuadOps(const Taco &,const ActivationRecord &);
+  /* Emit target code corresponding to a jump instruction quad. */
+  void emitJumpOps(const Taco &,const ActivationRecord &, mm_translator &);
 
   /* Auxiliary data */
   std::vector<int> usedConstants; // constant ids actually used

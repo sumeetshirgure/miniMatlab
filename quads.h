@@ -58,7 +58,9 @@ enum OpCode {
   OP_ALLOC,          // z = alloc(rows,cols) , z = alloc(Matrix) , z = alloc(Matrix,Matrix)
   OP_DEALLOC,        // dealloc(z)
   
-  OP_TRANSPOSE  // z = transpose(x) , where z and x point to a block of same size
+  OP_TRANSPOSE,      // z = transpose(x) , where z and x point to a block of same size
+
+  OP_DECLARE         // declare z , just used as a marker
 };
 
 

@@ -55,6 +55,8 @@ std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   case OP_DEALLOC : return out<<"dealloc( "<<taco.z<<" )";
 
   case OP_TRANSPOSE : return out<<taco.z<<" = "<<taco.x<<".'";
+
+  case OP_DECLARE : return out<<"Declared : "<<taco.z;
   default : break;
   }
   return out;
