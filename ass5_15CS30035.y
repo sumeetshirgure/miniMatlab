@@ -871,11 +871,63 @@ shift_expression : additive_expression { std::swap($$,$1); }
 %type <char> bit_shift_op;
 bit_shift_op : "<<" { $$ = '<'; } | ">>" { $$ = '>'; } ;
 
+/* TODO : Add condition checking for pointers. */
 %type <Expression> relational_expression equality_expression;
 relational_expression : shift_expression { std::swap($$,$1); }
-| relational_expression rel_op shift_expression {emitConditionOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);} ;
+| relational_expression rel_op shift_expression {
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  Symbol & rSym = translator.getSymbol($3.symbol);
+  bool lPtr = lSym.type.isPointer() , rPtr = lSym.type.isPointer() ;
+  if( lPtr and rPtr ) {
+    if( lSym.type != rSym.type ) {
+      translator.error(@$,"Warning : pointer type mismatch while comparison.");
+    }
+    OpCode opCode;
+    switch ( $2 ) {
+    case '<' : opCode = OP_LT ; break;
+    case '>' : opCode = OP_GT ; break;
+    case '(' : opCode = OP_LTE ; break;
+    case ')' : opCode = OP_GTE ; break;
+    default:break;
+    }
+    $$.isBoolean = true;
+    $$.trueList.push_back( translator.nextInstruction() );
+    translator.emit(Taco(opCode,"",lSym.id,rSym.id));
+    $$.falseList.push_back( translator.nextInstruction() );
+    translator.emit(Taco(OP_GOTO,""));
+  } else if( !lPtr and !rPtr ) {
+    emitConditionOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);
+  } else {
+    throw syntax_error(@$,"Invalid comparison of pointers.");
+  }
+} ;
+
 equality_expression : relational_expression { std::swap($$,$1); }
-| equality_expression eq_op relational_expression {emitConditionOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);} ;
+| equality_expression eq_op relational_expression {
+  Symbol & lSym = translator.getSymbol($1.symbol);
+  Symbol & rSym = translator.getSymbol($3.symbol);
+  bool lPtr = lSym.type.isPointer() , rPtr = lSym.type.isPointer() ;
+  if( lPtr and rPtr ) {
+    if( lSym.type != lSym.type ) {
+      translator.error(@$,"Warning : pointer type mismatch while comparison.");
+    }
+    OpCode opCode;
+    switch ( $2 ) {
+    case '=' : opCode = OP_EQ ; break;
+    case '!' : opCode = OP_NEQ ; break;
+    default:break;
+    }
+    $$.isBoolean = true;
+    $$.trueList.push_back( translator.nextInstruction() );
+    translator.emit(Taco(opCode,"",lSym.id,rSym.id));
+    $$.falseList.push_back( translator.nextInstruction() );
+    translator.emit(Taco(OP_GOTO,""));
+  } else if( !lPtr and !rPtr ) {
+    emitConditionOperation($2,translator,*this,$$,$1,$3,@$,@1,@3);
+  } else {
+    throw syntax_error(@$,"Invalid comparison of pointers.");
+  }
+} ;
 
 %type <char> rel_op eq_op;
 rel_op : "<" { $$ = '<'; } | ">" { $$ = '>'; } | "<=" { $$ ='('; } | ">=" { $$ = ')'; } ;

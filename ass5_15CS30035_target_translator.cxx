@@ -130,6 +130,9 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
       } else if( lhs.type == MM_INT_TYPE ) {
         regName = Regs[1][LONG];
 	movInstr = "movl"; cmpInstr = "cmpl";
+      } else { // pointers
+	regName = Regs[1][QUAD];
+	movInstr = "movq"; cmpInstr = "cmpq";
       }
     } else { // constant literals
       aRef = stack.constMap.find( quad.x );
@@ -148,6 +151,10 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
 	lId = "$"+std::to_string( lhs.value.intVal );
 	movInstr = "movl"; cmpInstr = "cmpl";
 	regName = Regs[1][LONG];
+      } else { // string
+	lId = "$.LS"+std::to_string( lhs.value.intVal )+"(%rip)";
+	regName = Regs[1][QUAD];
+	movInstr = "movq"; cmpInstr = "cmpq";
       }
     }
     // Move first operand to register
@@ -168,6 +175,8 @@ void mm_x86_64::emitQuadOps(const Taco & quad , const ActivationRecord & stack) 
 	rId = "$"+std::to_string( (int) rhs.value.charVal );
       else if( rhs.type == MM_INT_TYPE )
 	rId = "$"+std::to_string( rhs.value.intVal );
+      else // string
+	rId = "$.LS"+std::to_string( rhs.value.intVal )+"(%rip)";
     }
     
     fout << '\t' << cmpInstr << '\t' << rId << " , " << regName << "\n\t";
