@@ -18,6 +18,38 @@ mm_x86_64::~mm_x86_64 () {
   fout.close();
 }
 
+std::tuple< std::string , DataType >
+mm_x86_64::getLocation (const std::string & addr,const ActivationRecord & stack) {
+  const size_t BP = 6;
+  std::string retId; DataType retType;
+  auto ref = stack.locMap.find( addr );
+  if( ref != stack.locMap.end() ) {
+    int pos = ref->second;
+    retId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
+    retType = stack.acR[pos].first.type ;
+  } else if( ( ref = stack.constMap.find( addr ) ) != stack.constMap.end() ) { // constant literals
+    int id = ref->second;
+    const Symbol & sym = stack.toC[id];
+    retType = sym.type;
+    if( retType == MM_DOUBLE_TYPE ) {
+      retId = ".LC"+std::to_string(id)+"(%rip)";
+      usedConstants.emplace_back(id);
+    } else if( retType == MM_CHAR_TYPE ) {
+      retId = "$"+std::to_string( (int) sym.value.charVal );
+    } else if( retType == MM_INT_TYPE ) {
+      retId = "$"+std::to_string( sym.value.intVal );
+    } else { // string
+      retId = "$.LS"+std::to_string( sym.value.intVal );
+      usedStrings.emplace_back( sym.value.intVal );
+    }
+  } else { // global variables
+    const Symbol & sym = mic.getSymbol( mic.lookup( addr ) );
+    retType = sym.type;
+    retId = addr.substr(2,addr.length()-2)+"(%rip)";
+  }
+  return std::tie( retId , retType );
+}
+
 void mm_x86_64::generateTargetCode() {
 
   // Handle global declarations.
@@ -106,7 +138,6 @@ void mm_x86_64::generateTargetCode() {
     }
   }
 
-  // Emit RTL operations.
   for(unsigned int addr = 0; addr < QA.size() ; ) {
     if( QA[addr].opCode == OP_FUNC_START ) {
       unsigned int nxtAddr = addr;
@@ -175,100 +206,160 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   }
 
   std::sort( marks.begin() , marks.end() , std::greater<int>() );
+  stdRegs = 0 , fpRegs = 0;
+  std::stack<std::string> paramCodes; // to be passed in reverse order
+  int paramOffset = 0; // change in %rsp on caller side
+  
   for(unsigned int index = from + 1; index < to ; index++ ) {
     if( not marks.empty() and marks.back() == index ) {
       fout << ".L" << index << ":\n";
       marks.pop_back();
     }
     const Taco & quad = mic.quadArray[index];
-    if( quad.isJump() ) emitJumpOps( quad , stack , mic);
-    else fout << "\t#\t[" << quad << "]\n"; // TODO
+    if( quad.isJump() ) {
+      emitJumpOps( quad , stack ); // emit (conditional) jump operation
+    } else if( quad.opCode == OP_RETURN ) {
+      emitReturnOps( to , quad , stack ); // emit return operation
+    } else if( quad.opCode == OP_PARAM ) { // push parameters
+      std::string pId ; DataType pType ;
+      std::tie ( pId , pType ) = getLocation( quad.z , stack );
+      if( pType == MM_CHAR_TYPE ) {
+	std::string code;
+	if( stdRegs >= 6 ) {
+	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
+	  code = "\tmovsbq\t"+pId+", %rax\n"; paramCodes.push( code );
+	  paramOffset += 8;
+	} else {
+	  code = "\tmovb\t"+pId+", "+Regs[argRegs[stdRegs++]][BYTE]+'\n';
+	  paramCodes.push( code );
+	}
+      } else if( pType == MM_INT_TYPE ) {
+	std::string code;
+	if( stdRegs >= 6 ) {
+	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
+	  code = "\tmovslq\t"+pId+", %rax\n"; paramCodes.push( code );
+	  paramOffset += 8;
+	} else {
+	  code = "\tmovl\t"+pId+", "+Regs[argRegs[stdRegs++]][LONG]+'\n';
+	  paramCodes.push( code );
+	}
+      } else if( pType == MM_DOUBLE_TYPE ) {
+	std::string code;
+	if( fpRegs >= 8 ) {
+	  code = "\tmovsd\t%xmm8, (%rsp)\n"; paramCodes.push( code );
+	  code = "\tleaq\t-8(%rsp), %rsp\n"; paramCodes.push( code );
+	  code = "\tmovsd\t"+pId+", %xmm8\n"; paramCodes.push( code );
+	  paramOffset += 8; // push on stack
+	} else {
+	  code = "\tmovsd\t"+pId+", "+XReg+std::to_string(fpRegs++)+'\n';
+	  paramCodes.push( code );
+	}
+      } else if( pType.isMatrix() ) {
+	std::string code;
+	if( stdRegs >= 6 ) {
+	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
+	  code = "\tleaq"+pId+", %rax" ; paramCodes.push( code );
+	  paramOffset += 8;
+	} else {
+	  code = "\tleaq\t"+pId+", "+Regs[argRegs[stdRegs++]][QUAD]+'\n';
+	  paramCodes.push( code );
+	}
+      } else { // pointers
+	std::string code;
+	if( stdRegs >= 6 ) {
+	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
+	  code = "\tmovq\t"+pId+", %rax" ; paramCodes.push( code );
+	  paramOffset += 8;
+	} else {
+	  code = "\tmovq\t"+pId+", "+Regs[argRegs[stdRegs++]][QUAD]+'\n';
+	  paramCodes.push( code );
+	}
+      }
+    } else if( quad.opCode == OP_CALL ) {
+      if( paramOffset & 15 ) { // align to 16 bytes
+	fout << "\tleaq\t-8(%rsp), %rsp\n";
+	paramOffset += 8;
+      }
+      while( not paramCodes.empty() ) {
+	fout << paramCodes.top() ;
+	paramCodes.pop();
+      }
+      fout << "\tcall\t" << quad.x << '\n';
+      if( paramOffset > 0 )
+	fout << "\tleaq\t" << paramOffset << "(%rsp), %rsp\n" ;// pop parameters off the stack
+      stdRegs = fpRegs = paramOffset = 0;
+      std::string retId ; DataType retType ;
+      std::tie( retId , retType ) = getLocation( quad.z , stack );
+      if( retType == MM_CHAR_TYPE ) fout << "\tmovb\t"+Regs[0][BYTE]+", "+retId+'\n';
+      else if( retType == MM_INT_TYPE ) fout << "\tmovl\t"+Regs[0][LONG]+", "+retId+'\n';
+      else if( retType == MM_DOUBLE_TYPE ) fout << "\tmovsd\t%xmm0, "+retId+'\n';
+      else fout << "\tmovq\t"+Regs[0][QUAD]+", "+retId+'\n'; // Poinrix / Matter
+    } else fout << "\t#\t[" << quad << "]\n"; // TODO
   }
   
   /* TODO : Emit function footer */
-  // Deallocate all memory on heap , and leave
+  // Deallocate all memory on heap , and leave.
   fout << ".L" << to << ":\n";
   fout << "\tleave\n\tret\n" ; // return statement
   fout << "\t.size\t" << rootTable.name << ", .-" << rootTable.name << '\n' ;
-  // TODO : fout << "\t.section\t.rodata\n" ; // Dump all constants if non-empty
-  
+
+  if( usedConstants.size() + usedStrings.size() > 0 )
+    fout << "\t.section\t.rodata\n";
+  for( int id : usedConstants ) {
+    fout << "\t.align 8\n.LC" << id << ":\n";
+    int *ptr = (int*) (&stack.toC[id].value.doubleVal) ;
+    fout << "\t.long\t" << ptr[0] << "\n\t.long\t" << ptr[1] << '\n';
+  }
+  for( int id : usedStrings ) {
+    fout << ".LS" << id << ":\n\t.string\t" << mic.stringTable[id] << '\n';
+  }
+  usedStrings.clear() ; usedConstants.clear();
 }
 
-void mm_x86_64::emitJumpOps(const Taco & quad , const ActivationRecord & stack, mm_translator & mic) {
+void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationRecord & stack){
+  DataType retType = stack.retVal.type ;
+  if( retType != MM_VOID_TYPE ) {
+    const size_t BP = 6;
+    std::string retId ;
+    std::tie( retId , std::ignore ) = getLocation( quad.z , stack ) ;
+    const size_t ACC = 0;
+    std::string movInstr , regName ;
+    if( retType == MM_CHAR_TYPE ) {
+      movInstr = "movb" , regName = Regs[ACC][BYTE];
+    } else if( retType == MM_INT_TYPE ) {
+      movInstr = "movl" , regName = Regs[ACC][LONG];
+    } else if( retType == MM_DOUBLE_TYPE ) {
+      movInstr = "movsd" , regName = XReg+"0";
+    } else if( retType == MM_MATRIX_TYPE ) {
+      // TODO : Allocate memory for matrix to be returned and copy contents.
+      movInstr = "leaq" , regName = Regs[ACC][QUAD];
+    } else movInstr = "movq" , regName = Regs[ACC][QUAD]; // pointer
+    fout << '\t' << movInstr << '\t' << retId << ", " << regName << '\n';
+  }
+  fout << "\tjmp\t.L" << retLabel << '\n';
+}
+
+void mm_x86_64::emitJumpOps(const Taco & quad , const ActivationRecord & stack) {
   const size_t BP = 6 ;
   switch(quad.opCode) {
     /* Conditional jumps */
   case OP_LT : case OP_LTE : case OP_GT : case OP_GTE : case OP_EQ : case OP_NEQ : {
     std::string regName , lId , rId, movInstr, cmpInstr;
-
-    auto aRef = stack.locMap.find( quad.x );
-    if( aRef != stack.locMap.end() ) {
-      int pos = aRef->second;
-      const Symbol & lhs = stack.acR[pos].first ;
-      lId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
-      if( lhs.type == MM_DOUBLE_TYPE ) {
-        regName = XReg+"1"; movInstr = "movsd"; cmpInstr = "ucomisd";
-      } else if( lhs.type == MM_CHAR_TYPE ) {
-        regName = Regs[1][BYTE]; movInstr = "movb"; cmpInstr = "cmpb";
-      } else if( lhs.type == MM_INT_TYPE ) {
-        regName = Regs[1][LONG]; movInstr = "movl"; cmpInstr = "cmpl";
-      } else { // pointers
-	regName = Regs[1][QUAD]; movInstr = "movq"; cmpInstr = "cmpq";
-      }
-    } else if( ( aRef = stack.constMap.find( quad.x ) ) != stack.constMap.end() ) { // constant literals
-      int id = aRef->second;
-      const Symbol & lhs = stack.toC[id];
-      if( lhs.type == MM_DOUBLE_TYPE ) {
-	lId = "$.LC"+std::to_string(id)+"(%rip)";
-	usedConstants.emplace_back(id); regName = XReg+"1";
-	movInstr = "movsd"; cmpInstr = "ucomisd";
-      } else if( lhs.type == MM_CHAR_TYPE ) {
-	lId = "$"+std::to_string( (int) lhs.value.charVal );
-	movInstr = "movb"; cmpInstr = "cmpb"; regName = Regs[1][BYTE];
-      } else if( lhs.type == MM_INT_TYPE ) {
-	lId = "$"+std::to_string( lhs.value.intVal );
-	movInstr = "movl"; cmpInstr = "cmpl"; regName = Regs[1][LONG];
-      } else { // string
-	lId = "$.LS"+std::to_string( lhs.value.intVal )+"(%rip)";
-	movInstr = "movq"; cmpInstr = "cmpq"; regName = Regs[1][QUAD];
-      }
-    } else { // global variables
-      SymbolRef globalRef = mic.lookup(quad.x) ;
-      Symbol & lhs = mic.getSymbol( globalRef );
-      lId = quad.x.substr(2,quad.x.length()-2)+"(%rip)";
-      if( lhs.type == MM_DOUBLE_TYPE ) {
-	regName = XReg+"1"; movInstr = "movsd"; cmpInstr = "ucomisd";
-      } else if( lhs.type == MM_CHAR_TYPE ) {
-	movInstr = "movb"; cmpInstr = "cmpb"; regName = Regs[1][BYTE];
-      } else if( lhs.type == MM_INT_TYPE ) { //
-	movInstr = "movl"; cmpInstr = "cmpl"; regName = Regs[1][LONG];
-      } else { // pointer
-	movInstr = "movq"; cmpInstr = "cmpq"; regName = Regs[1][QUAD];
-      }
-    }
+    const size_t ACC = 1;
+    DataType type;
+    std::tie( lId , type ) = getLocation( quad.x , stack );
+    std::tie( rId , std::ignore ) = getLocation( quad.y , stack );
+    if( type == MM_CHAR_TYPE )
+      movInstr = "movb" , cmpInstr = "cmpb" , regName = Regs[ACC][BYTE] ;
+    else if( type == MM_INT_TYPE )
+      movInstr = "movl" , cmpInstr = "cmpl" , regName = Regs[ACC][LONG] ;
+    else if( type == MM_DOUBLE_TYPE )
+      movInstr = "movsd" , cmpInstr = "ucomisd" , regName = XReg+"1" ;
+    else if( type.isPointer() )
+      movInstr = "movq" , cmpInstr = "cmpq" , regName = Regs[ACC][QUAD] ;
     // Move first operand to register
     fout << '\t' << movInstr << '\t' << lId << " , " << regName << '\n';
-    
-    auto bRef = stack.locMap.find( quad.y );
-    if( bRef != stack.locMap.end() ) {
-      int pos = bRef->second;
-      const Symbol & rhs = stack.acR[pos].first ;
-      rId = std::to_string(stack.acR[pos].second) + "(" + Regs[BP][QUAD] + ")" ;
-    } else if( ( bRef = stack.constMap.find( quad.y ) ) != stack.constMap.end() ) { // constant literals
-      int id = bRef->second;
-      const Symbol & rhs = stack.toC[id];
-      if( rhs.type == MM_DOUBLE_TYPE )
-	rId = "$.LC"+std::to_string(id)+"(%rip)";
-      else if( rhs.type == MM_CHAR_TYPE )
-	rId = "$"+std::to_string( (int) rhs.value.charVal );
-      else if( rhs.type == MM_INT_TYPE )
-	rId = "$"+std::to_string( rhs.value.intVal );
-      else // string
-	rId = "$.LS"+std::to_string( rhs.value.intVal )+"(%rip)";
-    } else { // global variables
-      rId = quad.y.substr(2,quad.y.length()-2)+"(%rip)";
-    }
-    
+    // Compare operands
     fout << '\t' << cmpInstr << '\t' << rId << " , " << regName << "\n\t";
     switch( quad.opCode ) {
     case OP_LT : fout << "jl" ; break;

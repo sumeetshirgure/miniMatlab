@@ -73,10 +73,18 @@ public:
 
   /* Function code generation. */
   void emitFunction(unsigned int, unsigned int, unsigned int);
+
+  /* Gets location and type of an address in tacos.
+     Any constants / string used are pushed in usedConstants / usedString containers. */
+  std::tuple< std::string , DataType > getLocation(const std::string &,const ActivationRecord &);
   
   /* Emit target code corresponding to a jump instruction quad. */
-  void emitJumpOps(const Taco &,const ActivationRecord &, mm_translator &);
+  void emitJumpOps(const Taco &,const ActivationRecord &);
+  /* Emit target code corresponding to a return instruction quad. */
+  void emitReturnOps(int,const Taco &,const ActivationRecord &);
 
   /* Auxiliary data */
   std::vector<int> usedConstants; // constant ids actually used
+  std::vector<int> usedStrings; // string ids actually used
+  
 };
