@@ -12,6 +12,7 @@ mm_x86_64::mm_x86_64 (mm_translator & translator)
     std::string outFileName = mic.file.substr(0,mic.file.length()-3) + ".asm";
     fout.open(outFileName);
   }
+  constIds = 0;
 }
 
 mm_x86_64::~mm_x86_64 () {
@@ -32,8 +33,8 @@ mm_x86_64::getLocation (const std::string & addr,const ActivationRecord & stack)
     const Symbol & sym = stack.toC[id];
     retType = sym.type;
     if( retType == MM_DOUBLE_TYPE ) {
-      retId = ".LC"+std::to_string(id)+"(%rip)";
-      usedConstants.emplace_back(id);
+      retId = ".LC"+std::to_string(constIds)+"(%rip)";
+      usedConstants.emplace_back(id , constIds++);
     } else if( retType == MM_CHAR_TYPE ) {
       retId = "$"+std::to_string( (int) sym.value.charVal );
     } else if( retType == MM_INT_TYPE ) {
@@ -218,8 +219,13 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
     const Taco & quad = mic.quadArray[index];
     if( quad.isJump() ) {
       emitJumpOps( quad , stack ); // emit (conditional) jump operation
+      
+    } else if( quad.isCopy() ) {
+      emitCopyOps( quad , stack ); // emit data copy operation(s)
+      
     } else if( quad.opCode == OP_RETURN ) {
       emitReturnOps( to , quad , stack ); // emit return operation
+      
     } else if( quad.opCode == OP_PARAM ) { // push parameters
       std::string pId ; DataType pType ;
       std::tie ( pId , pType ) = getLocation( quad.z , stack );
@@ -227,7 +233,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 	std::string code;
 	if( stdRegs >= 6 ) {
 	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
-	  code = "\tmovsbq\t"+pId+", %rax\n"; paramCodes.push( code );
+	  code = "\tmovb\t"+pId+", %rax\n"; paramCodes.push( code );
 	  paramOffset += 8;
 	} else {
 	  code = "\tmovb\t"+pId+", "+Regs[argRegs[stdRegs++]][BYTE]+'\n';
@@ -237,7 +243,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 	std::string code;
 	if( stdRegs >= 6 ) {
 	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
-	  code = "\tmovslq\t"+pId+", %rax\n"; paramCodes.push( code );
+	  code = "\tmovl\t"+pId+", %eax\n"; paramCodes.push( code );
 	  paramOffset += 8;
 	} else {
 	  code = "\tmovl\t"+pId+", "+Regs[argRegs[stdRegs++]][LONG]+'\n';
@@ -275,6 +281,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 	  paramCodes.push( code );
 	}
       }
+      
     } else if( quad.opCode == OP_CALL ) {
       if( paramOffset & 15 ) { // align to 16 bytes
 	fout << "\tleaq\t-8(%rsp), %rsp\n";
@@ -294,6 +301,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
       else if( retType == MM_INT_TYPE ) fout << "\tmovl\t"+Regs[0][LONG]+", "+retId+'\n';
       else if( retType == MM_DOUBLE_TYPE ) fout << "\tmovsd\t%xmm0, "+retId+'\n';
       else fout << "\tmovq\t"+Regs[0][QUAD]+", "+retId+'\n'; // Poinrix / Matter
+      
     } else fout << "\t#\t[" << quad << "]\n"; // TODO
   }
   
@@ -305,9 +313,9 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 
   if( usedConstants.size() + usedStrings.size() > 0 )
     fout << "\t.section\t.rodata\n";
-  for( int id : usedConstants ) {
-    fout << "\t.align 8\n.LC" << id << ":\n";
-    int *ptr = (int*) (&stack.toC[id].value.doubleVal) ;
+  for( const auto & cId : usedConstants ) {
+    fout << "\t.align 8\n.LC" << cId.second << ":\n";
+    int *ptr = (int*) (&stack.toC[cId.first].value.doubleVal) ;
     fout << "\t.long\t" << ptr[0] << "\n\t.long\t" << ptr[1] << '\n';
   }
   for( int id : usedStrings ) {
@@ -316,7 +324,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   usedStrings.clear() ; usedConstants.clear();
 }
 
-void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationRecord & stack){
+void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationRecord & stack) {
   DataType retType = stack.retVal.type ;
   if( retType != MM_VOID_TYPE ) {
     const size_t BP = 6;
@@ -337,6 +345,34 @@ void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationR
     fout << '\t' << movInstr << '\t' << retId << ", " << regName << '\n';
   }
   fout << "\tjmp\t.L" << retLabel << '\n';
+}
+
+void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {
+  const size_t BP = 6 , ACC = 0;
+  switch(quad.opCode) {
+  case OP_COPY : {
+    if( stack.constMap.find( quad.z ) != stack.constMap.end() ) {
+      // Ignore.
+      return ;
+    }
+    std::string lId , rId , movInstr , regName ;
+    DataType type ;
+    std::tie( lId , type ) = getLocation( quad.z , stack );
+    std::tie( rId , std::ignore ) = getLocation( quad.x , stack );
+    if( type == MM_CHAR_TYPE ) movInstr = "movb" , regName = Regs[ACC][BYTE] ;
+    else if( type == MM_INT_TYPE ) movInstr = "movl" , regName = Regs[ACC][LONG] ;
+    else if( type == MM_DOUBLE_TYPE ) movInstr = "movsd" , regName = XReg+"0" ;
+    else if( type.isPointer() ) movInstr = "movq" , regName = Regs[ACC][QUAD] ;
+    else if( type.isMatrix() ) {
+      // std::cerr << "#Matrix_copy" << std::endl;
+      fout << "\t#" << quad << '\n';
+      return ;
+    }
+    fout << '\t' << movInstr << '\t' << rId << ", " << regName << '\n';
+    fout << '\t' << movInstr << '\t' << regName << ", " << lId << '\n';
+  } break;
+  default : break;
+  }
 }
 
 void mm_x86_64::emitJumpOps(const Taco & quad , const ActivationRecord & stack) {

@@ -80,11 +80,16 @@ public:
   
   /* Emit target code corresponding to a jump instruction quad. */
   void emitJumpOps(const Taco &,const ActivationRecord &);
+  
   /* Emit target code corresponding to a return instruction quad. */
   void emitReturnOps(int,const Taco &,const ActivationRecord &);
+  
+  /* Emit target code corresponding to a move / copy instruction quad. */
+  void emitCopyOps(const Taco &,const ActivationRecord &);
+  
 
   /* Auxiliary data */
-  std::vector<int> usedConstants; // constant ids actually used
-  std::vector<int> usedStrings; // string ids actually used
-  
+  std::vector< std::pair<int,int> > usedConstants; // constant ids actually used
+  std::vector< int > usedStrings; // string ids actually used
+  unsigned int constIds ;
 };
