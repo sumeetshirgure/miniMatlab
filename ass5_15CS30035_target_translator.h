@@ -43,7 +43,7 @@ public:
   const std::string Regs[16][3] = {
     { "%rax" , "%eax" , "%al" } ,
     { "%rbx" , "%ebx" , "%bl" } ,
-    { "%rcx" , "%ebx" , "%bl" } ,
+    { "%rcx" , "%ecx" , "%cl" } ,
     { "%rdx" , "%edx" , "%dl" } ,
     { "%rsi" , "%esi" , "%sil" } ,
     { "%rdi" , "%edi" , "%dil" } ,

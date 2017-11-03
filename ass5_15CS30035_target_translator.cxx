@@ -348,13 +348,12 @@ void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationR
 }
 
 void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {
-  const size_t BP = 6 , ACC = 0;
+  const size_t BP = 6 , ACC = 0 , PTR = 1;
   switch(quad.opCode) {
+    
   case OP_COPY : {
-    if( stack.constMap.find( quad.z ) != stack.constMap.end() ) {
-      // Ignore.
-      return ;
-    }
+    if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+      return ; // Ignore.
     std::string lId , rId , movInstr , regName ;
     DataType type ;
     std::tie( lId , type ) = getLocation( quad.z , stack );
@@ -371,7 +370,113 @@ void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) 
     fout << '\t' << movInstr << '\t' << rId << ", " << regName << '\n';
     fout << '\t' << movInstr << '\t' << regName << ", " << lId << '\n';
   } break;
-  default : break;
+    
+  case OP_R_DEREF : {
+    if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+      return ;
+    std::string lId , rId , movInstr , regName ;
+    DataType type ;
+    std::tie( lId , type ) = getLocation( quad.z , stack );
+    std::tie( rId , std::ignore ) = getLocation( quad.x , stack );
+    if( type == MM_CHAR_TYPE ) movInstr = "movb" , regName = Regs[ACC][BYTE] ;
+    else if( type == MM_INT_TYPE ) movInstr = "movl" , regName = Regs[ACC][LONG] ;
+    else if( type == MM_DOUBLE_TYPE ) movInstr = "movsd" , regName = XReg+"0" ;
+    else if( type.isPointer() ) movInstr = "movq" , regName = Regs[ACC][QUAD] ;
+    fout << "\tleaq\t" << rId << ", " << Regs[PTR][QUAD] << '\n';
+    fout << '\t' << movInstr << "\t(" << Regs[PTR][QUAD] << "), " << regName << '\n';
+    fout << '\t' << movInstr << '\t' << regName << ", " << lId << '\n';
+  } break;
+    
+  case OP_L_DEREF : {
+    if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+      return ;
+    std::string lId , rId , movInstr , regName ;
+    DataType type ;
+    std::tie( lId , std::ignore ) = getLocation( quad.z , stack );
+    std::tie( rId , type ) = getLocation( quad.x , stack );
+    if( type == MM_CHAR_TYPE ) movInstr = "movb" , regName = Regs[ACC][BYTE] ;
+    else if( type == MM_INT_TYPE ) movInstr = "movl" , regName = Regs[ACC][LONG] ;
+    else if( type == MM_DOUBLE_TYPE ) movInstr = "movsd" , regName = XReg+"0" ;
+    else if( type.isPointer() ) movInstr = "movq" , regName = Regs[ACC][QUAD] ;
+    fout << "\tmovq\t" << lId << ", " << Regs[PTR][QUAD] << '\n';
+    fout << '\t' << movInstr << '\t' << rId << ", " << regName << '\n';
+    fout << '\t' << movInstr << '\t' << regName << ", (" << Regs[PTR][QUAD] << ")\n";
+  } break;
+    
+  case OP_REFER : {
+    if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+      return ;
+    std::string lId , rId , movInstr ;
+    std::tie( lId , std::ignore ) = getLocation( quad.z , stack );
+    std::tie( rId , std::ignore ) = getLocation( quad.x , stack );
+    fout << "\tleaq\t" << rId << ", " << Regs[PTR][QUAD] << '\n';
+    fout << "\tmovq\t" << Regs[PTR][QUAD] << ", " << lId << '\n';
+  } break;
+
+  case OP_LXC : {
+    std::string zId , xId , yId , movInstr , dataReg ;
+
+    std::tie( zId , std::ignore ) = getLocation( quad.z , stack );
+
+    /* Get base address. */
+    fout << "\tleaq\t" << zId << ", " << Regs[PTR][QUAD] << '\n';
+    
+    /* Get index. */
+    try {
+      int index = std::stoi( quad.x ) ;
+      xId = "$" + quad.x ;
+      fout << "\tmovq\t" << xId << ", " << Regs[ACC][QUAD] << '\n';
+    } catch ( std::invalid_argument ex ) {
+      DataType indexType ;
+      std::tie( xId , indexType ) = getLocation( quad.x , stack );
+      fout << "\tmovl\t" << xId << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tcltq\n";
+    }
+
+    /* Get rhs location. */
+    DataType dataType ;
+    std::tie( yId , dataType ) = getLocation( quad.y , stack );
+    if( dataType == MM_INT_TYPE ) {
+      dataReg = Regs[2][LONG] ; movInstr = "movl";
+    } else {
+      dataReg = XReg+"0"; movInstr = "movsd";
+    }
+    fout << '\t' << movInstr << '\t' << yId << ", " << dataReg << '\n';
+
+    /* Copy into memory. */
+    fout << '\t' << movInstr << '\t' << dataReg << ", (" << Regs[PTR][QUAD] << ',' << Regs[ACC][QUAD] << ")\n";
+    
+  } break;
+    
+  case OP_RXC : {
+    std::string zId , xId , yId , movInstr , dataReg ;
+
+    std::tie( xId , std::ignore ) = getLocation( quad.x , stack );
+
+    /* Get base address. */
+    fout << "\tleaq\t" << xId << ", " << Regs[PTR][QUAD] << '\n';
+    
+    /* Get index. */
+    try {
+      int index = std::stoi( quad.y ) ;
+      yId = "$" + quad.y ;
+      fout << "\tmovq\t" << yId << ", " << Regs[ACC][QUAD] << '\n';
+    } catch ( std::invalid_argument ex ) {
+      DataType indexType ;
+      std::tie( yId , indexType ) = getLocation( quad.y , stack );
+      fout << "\tmovl\t" << yId << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tcltq\n";
+    }
+
+    /* Copy data. */
+    dataReg = XReg+"0";
+    std::tie( zId , std::ignore ) = getLocation( quad.z , stack );
+    fout << "\tmovsd\t(" << Regs[PTR][QUAD] << ',' << Regs[ACC][QUAD] << "), " << dataReg << '\n';
+    fout << "\tmovsd\t" << dataReg << ", " << zId << '\n';
+    
+  } break;
+    
+  default : fout << "\t#\t" << quad << '\n';
   }
 }
 
