@@ -12,6 +12,10 @@ bool Taco::isBitwise() const {
   return OP_BIT_AND <= opCode and opCode <= OP_SHR or opCode == OP_BIT_NOT ;
 }
 
+bool Taco::isConversion() const {
+  return OP_CONV_TO_CHAR <= opCode and opCode <= OP_CONV_TO_DOUBLE ;
+}
+
 std::ostream& operator<<(std::ostream& out,const Taco& taco) {
   switch(taco.opCode) {
   case OP_PLUS:return out<<taco.z<<" = "<<taco.x<<" + "<<taco.y;

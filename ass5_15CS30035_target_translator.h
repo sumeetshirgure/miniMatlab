@@ -87,10 +87,13 @@ public:
   /* Emit target code corresponding to a move / copy instruction quad. */
   void emitCopyOps(const Taco &,const ActivationRecord &);
 
-  /* Emit binary arithmetic operations. */
+  /* Emit arithmetic operations. */
   void emitPlusMinusOps(const Taco &,const ActivationRecord &);
   void emitUnaryMinusOps(const Taco &,const ActivationRecord &);
   void emitMultDivOps(const Taco &,const ActivationRecord &);
+
+  /* Emit conversion operations. */
+  void emitConversionOps(const Taco &,const ActivationRecord &);
 
   /* Auxiliary data */
   std::vector< std::pair<int,int> > usedConstants; // constant ids actually used

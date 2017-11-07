@@ -237,7 +237,10 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
     } else if( quad.isBitwise() ) {
       std::cerr << "Bitwise operands not implemented yet." << std::endl;
       throw 1;
-      
+
+    } else if( quad.isConversion() ) {
+      emitConversionOps( quad , stack );
+
     } else if( quad.opCode == OP_MULT or quad.opCode == OP_DIV or quad.opCode == OP_MOD ) {
       emitMultDivOps( quad , stack );
       
@@ -526,6 +529,48 @@ void mm_x86_64::emitUnaryMinusOps(const Taco & quad , const ActivationRecord & s
       fout << "\tmovsd\t%xmm0, " << zId << '\n';
     }
   }
+}
+
+void mm_x86_64::emitConversionOps(const Taco & quad , const ActivationRecord & stack) {
+  if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+    return ; // Ignore.
+  
+  const size_t ACC = 0;
+  DataType rType ;
+  std::string zId , xId ;
+  std::tie( zId , std::ignore ) = getLocation( quad.z , stack );
+  std::tie( xId , rType ) = getLocation( quad.x , stack );
+  
+  if( quad.opCode == OP_CONV_TO_CHAR ) {
+    if( rType == MM_INT_TYPE ) {
+      fout << "\tmovl\t" << xId << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tmovb\t" << Regs[ACC][BYTE] << ", " << zId << '\n';
+    } else if( rType == MM_DOUBLE_TYPE ) {
+      fout << "\tmovsd\t" << xId << ", %xmm0\n";
+      fout << "\tcvttsd2si\t%xmm0, " << Regs[ACC][LONG] << '\n';
+      fout << "\tmovb\t" << Regs[ACC][BYTE] << ", " << zId << '\n';
+    }
+  } else if( quad.opCode == OP_CONV_TO_INT ) {
+    if( rType == MM_CHAR_TYPE ) {
+      fout << "\tmovb\t" << xId << ", " << Regs[ACC][BYTE] << '\n';
+      fout << "\tmovzbl\t" << Regs[ACC][BYTE] << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tmovl\t" << Regs[ACC][LONG] << ", " << zId << '\n';
+    } else if( rType == MM_DOUBLE_TYPE ) {
+      fout << "\tmovsd\t" << xId << ", %xmm0\n";
+      fout << "\tcvttsd2si\t%xmm0, " << Regs[ACC][LONG] << '\n';
+      fout << "\tmovl\t" << Regs[ACC][LONG] << ", " << zId << '\n';
+    }
+  } else if( quad.opCode == OP_CONV_TO_DOUBLE ) {
+    if( rType == MM_CHAR_TYPE ) {
+      fout << "\tmovb\t" << xId << ", " << Regs[ACC][BYTE] << '\n';
+      fout << "\tmovzbl\t" << Regs[ACC][BYTE] << ", " << Regs[ACC][LONG] << '\n';
+    } else if( rType == MM_INT_TYPE ) {
+      fout << "\tmovl\t" << xId << ", " << Regs[ACC][LONG] << '\n';
+    }
+    fout << "\tcvtsi2sd\t" << Regs[ACC][LONG] << ", %xmm0\n" ;
+    fout << "\tmovsd\t%xmm0, " << zId << '\n';
+  }
+
 }
 
 void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {

@@ -71,10 +71,11 @@ public:
   Taco(const OpCode &code,const std::string&_z="",const std::string&_x="",const std::string&_y="") :
     opCode(code),z(_z),x(_x),y(_y) { }
 
-  // Check if this opcode routes control flow
+  // Classify opcodes
   bool isJump() const;
   bool isCopy() const;
   bool isBitwise() const;
+  bool isConversion() const;
   
   virtual ~Taco(){}
 };
