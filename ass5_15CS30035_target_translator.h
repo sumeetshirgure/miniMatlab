@@ -89,6 +89,7 @@ public:
 
   /* Emit binary arithmetic operations. */
   void emitPlusMinusOps(const Taco &,const ActivationRecord &);
+  void emitUnaryMinusOps(const Taco &,const ActivationRecord &);
   void emitMultDivOps(const Taco &,const ActivationRecord &);
 
   /* Auxiliary data */

@@ -1829,7 +1829,7 @@ void emitScalarBinaryOperation(char opChar ,
   else if( opChar == '+' ) translator.emit(Taco(OP_PLUS,retSymbol.id,CLHS.id,CRHS.id));
   else if( opChar == '-' ) translator.emit(Taco(OP_MINUS,retSymbol.id,CLHS.id,CRHS.id));
 
-  if(retSymbol.isInitialized){// propagate initial value
+  if(retSymbol.isInitialized and retSymbol.isConstant){// propagate initial value
     if(retType == MM_CHAR_TYPE) {
       switch(opChar){
       case '*' : retSymbol.value.charVal = CLHS.value.charVal*CRHS.value.charVal; break;
@@ -1914,7 +1914,7 @@ void emitIntegerBinaryOperation(char opChar,
   if( opChar == '^' ) translator.emit(Taco(OP_BIT_XOR,retSymbol.id,CLHS.id,CRHS.id));
   if( opChar == '|' ) translator.emit(Taco(OP_BIT_OR,retSymbol.id,CLHS.id,CRHS.id));
   
-  if(retSymbol.isInitialized){// propagate initial value
+  if(retSymbol.isInitialized and retSymbol.isConstant){// propagate initial value
     if(retType == MM_CHAR_TYPE) {
       switch(opChar){
       case '%' : {

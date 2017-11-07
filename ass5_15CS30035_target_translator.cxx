@@ -152,6 +152,11 @@ void mm_x86_64::generateTargetCode() {
       addr++;
     }
   }
+
+  /* Negating doubles. */
+  fout << "\t.section\t.rodata\n";
+  fout << "\t.align 16\n.LNEGD:\n";
+  fout << "\t.long\t0\n\t.long\t-2147483648\n\t.long\t0\n\t.long\t0\n";
   
 }
 
@@ -225,8 +230,15 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 
     } else if( quad.opCode == OP_PLUS or quad.opCode == OP_MINUS ) {
       emitPlusMinusOps( quad , stack );
-
-    } else if( quad.opCode == OP_MULT or quad.opCode == OP_DIV ) {
+      
+    } else if( quad.opCode == OP_UMINUS ) {
+      emitUnaryMinusOps( quad , stack );
+      
+    } else if( quad.isBitwise() ) {
+      std::cerr << "Bitwise operands not implemented yet." << std::endl;
+      throw 1;
+      
+    } else if( quad.opCode == OP_MULT or quad.opCode == OP_DIV or quad.opCode == OP_MOD ) {
       emitMultDivOps( quad , stack );
       
     } else if( quad.opCode == OP_RETURN ) {
@@ -375,19 +387,25 @@ void mm_x86_64::emitMultDivOps(const Taco & quad , const ActivationRecord & stac
     if( retType == MM_CHAR_TYPE ) {
       fout << "\tmovb\t" << xId << ", " << Regs[ACC][BYTE] << '\n';
       fout << "\tmovsbl\t" << Regs[ACC][BYTE] << ", " << Regs[ACC][LONG] << '\n';
-      if( quad.opCode == OP_DIV ) fout << "\tcltd\n" ; // sign extends %eax to %edx:%eax
+      if( quad.opCode == OP_DIV or quad.opCode == OP_MOD ) fout << "\tcltd\n" ; // sign extends %eax to %edx:%eax
       fout << "\tmovb\t" << yId << ", " << Regs[CX][BYTE] << '\n';
       fout << "\tmovsbl\t" << Regs[CX][BYTE] << ", " << Regs[CX][LONG] << '\n';
-      if( quad.opCode == OP_DIV ) fout << "\tidivl\t" << Regs[CX][LONG] << '\n';
+      if( quad.opCode == OP_DIV or quad.opCode == OP_MOD ) fout << "\tidivl\t" << Regs[CX][LONG] << '\n';
       else fout << "\timull\t" << Regs[CX][LONG] << ", " << Regs[ACC][LONG] << '\n';
-      fout << "\tmovb\t" << Regs[ACC][BYTE] << ", " << zId << '\n';
+      if( quad.opCode == OP_MULT or quad.opCode == OP_DIV )
+	fout << "\tmovb\t" << Regs[ACC][BYTE] << ", " << zId << '\n';
+      else
+	fout << "\tmovb\t" << Regs[DX][BYTE] << ", " << zId << '\n';
     } else if( retType == MM_INT_TYPE ) {
       fout << "\tmovl\t" << xId << ", " << Regs[ACC][LONG] << '\n';
-      if( quad.opCode == OP_DIV ) fout << "\tcltd\n" ; // sign extends %eax to %edx:%eax
+      if( quad.opCode == OP_DIV or quad.opCode == OP_MOD ) fout << "\tcltd\n" ; // sign extends %eax to %edx:%eax
       fout << "\tmovl\t" << yId << ", " << Regs[CX][LONG] << '\n';
-      if( quad.opCode == OP_DIV ) fout << "\tidivl\t" << Regs[CX][LONG] << '\n';
+      if( quad.opCode == OP_DIV or quad.opCode == OP_MOD ) fout << "\tidivl\t" << Regs[CX][LONG] << '\n';
       else fout << "\timull\t" << Regs[CX][LONG] << ", " << Regs[ACC][LONG] << '\n';
-      fout << "\tmovl\t" << Regs[ACC][LONG] << ", " << zId << '\n';
+      if( quad.opCode == OP_MULT or quad.opCode == OP_DIV )
+	fout << "\tmovl\t" << Regs[ACC][LONG] << ", " << zId << '\n';
+      else
+	fout << "\tmovl\t" << Regs[DX][LONG] << ", " << zId << '\n';
     } else if( retType == MM_DOUBLE_TYPE ) {
       fout << "\tmovsd\t" << xId << ", %xmm0\n";
       fout << "\tmovsd\t" << yId << ", %xmm1\n";
@@ -477,6 +495,37 @@ void mm_x86_64::emitPlusMinusOps(const Taco & quad , const ActivationRecord & st
     fout << "\t#\t" << quad << '\n';
   }
   
+}
+
+void mm_x86_64::emitUnaryMinusOps(const Taco & quad , const ActivationRecord & stack) {
+  if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+    return ; // Ignore.
+
+  const size_t ACC = 0;
+  DataType retType ;
+  std::string zId , xId;
+  std::tie( zId , retType ) = getLocation( quad.z , stack );
+  std::tie( xId , std::ignore ) = getLocation( quad.x , stack );
+  if( retType.isMatrix() ) {
+    // std::cerr << "" << std::endl; // TODO
+    fout << "\t#\t" << quad << '\n';
+  } else {
+    if( retType == MM_CHAR_TYPE ) {
+      fout << "\tmovb\t" << xId << ", " << Regs[ACC][BYTE] << '\n';
+      fout << "\tmovzbl\t" << Regs[ACC][BYTE] << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tnegl\t" << Regs[ACC][LONG] << '\n';
+      fout << "\tmovb\t" << Regs[ACC][BYTE] << ", " << zId << '\n';
+    } else if( retType == MM_INT_TYPE ) {
+      fout << "\tmovl\t" << xId << ", " << Regs[ACC][LONG] << '\n';
+      fout << "\tnegl\t" << Regs[ACC][LONG] << '\n';
+      fout << "\tmovl\t" << Regs[ACC][LONG] << ", " << zId << '\n';
+    } else {
+      fout << "\tmovsd\t" << xId << ", %xmm0\n" ;
+      fout << "\tmovsd\t.LNEGD(%rip), %xmm1\n" ;
+      fout << "\txorpd\t%xmm1, %xmm0\n" ;
+      fout << "\tmovsd\t%xmm0, " << zId << '\n';
+    }
+  }
 }
 
 void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {

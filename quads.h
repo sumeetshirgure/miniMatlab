@@ -74,6 +74,7 @@ public:
   // Check if this opcode routes control flow
   bool isJump() const;
   bool isCopy() const;
+  bool isBitwise() const;
   
   virtual ~Taco(){}
 };
