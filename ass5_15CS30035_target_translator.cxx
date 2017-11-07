@@ -222,6 +222,9 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
       
     } else if( quad.isCopy() ) {
       emitCopyOps( quad , stack ); // emit data copy operation(s)
+
+    } else if( quad.opCode == OP_PLUS or quad.opCode == OP_MINUS ) {
+      emitPlusMinusOps( quad , stack );
       
     } else if( quad.opCode == OP_RETURN ) {
       emitReturnOps( to , quad , stack ); // emit return operation
@@ -347,8 +350,78 @@ void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationR
   fout << "\tjmp\t.L" << retLabel << '\n';
 }
 
+void mm_x86_64::emitPlusMinusOps(const Taco & quad , const ActivationRecord & stack) {
+  if( stack.constMap.find( quad.z ) != stack.constMap.end() )
+    return ; // Ignore.
+  
+  const size_t ACC = 0 , DX = 3;
+  DataType retType , xType , yType ;
+  std::string zId , xId , yId , movInstr , opInstr ;
+  bool inc_dec = false;
+  
+  std::tie( zId , retType ) = getLocation( quad.z , stack );
+  std::tie( xId , xType ) = getLocation( quad.x , stack );
+
+  try {
+    int value = std::stoi( quad.y );
+    if( value == 1 ) inc_dec = true;
+    yId = "$" + quad.y; yType = MM_INT_TYPE;
+  } catch ( std::invalid_argument ex ) {
+    std::tie( yId , yType ) = getLocation( quad.y , stack );
+  }
+  
+  if( retType.isScalarType() ) {
+    std::string alphaReg , betaReg ;
+    
+    movInstr = "mov";
+    opInstr = (quad.opCode == OP_PLUS ? "add" : "sub") ;
+    
+    if( retType != MM_DOUBLE_TYPE and inc_dec )
+      opInstr = (quad.opCode == OP_PLUS ? "inc" : "dec") ;
+    
+    if( retType == MM_CHAR_TYPE ) {
+      movInstr += 'b'; opInstr  += 'b';
+      alphaReg = Regs[ACC][BYTE] , betaReg = Regs[DX][BYTE];
+    } else if( retType == MM_INT_TYPE ) {
+      movInstr += 'l'; opInstr  += 'l';
+      alphaReg = Regs[ACC][LONG] , betaReg = Regs[DX][LONG];
+    } else { // MM_DOUBLE_TYPE
+      movInstr += "sd"; opInstr += "sd";
+      alphaReg = XReg+"0" , betaReg = XReg+"1";
+    }
+    fout << '\t' << movInstr << '\t' << xId << ", " << alphaReg << '\n';
+
+    if( inc_dec ) {
+      fout << '\t' << opInstr << '\t' << alphaReg << '\n';
+    } else {
+      fout << '\t' << movInstr << '\t' << yId << ", " << betaReg  << '\n';
+      fout << '\t' << opInstr << '\t' << betaReg << ", " << alphaReg << '\n';
+    }
+    fout << '\t' << movInstr << '\t' << alphaReg << ", " << zId << '\n';
+    
+  } else if( retType.isPointer() ) {
+    if( xType.isMatrix() and yType == MM_INT_TYPE ) { // base + offset
+      fout << "\tleaq\t" << xId << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovl\t" << yId << ", " << Regs[ACC][LONG] << "\n\tcltq\n";
+      fout << "\taddq\t" << Regs[ACC][QUAD] << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovq\t" << Regs[DX][QUAD] << ", " << zId << '\n';
+    } else if( xType.isPointer() and yType == MM_INT_TYPE ) {
+      std::string opInstr = (quad.opCode == OP_PLUS ? "addq" : "subq");
+      fout << "\tmovq\t" << xId << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovl\t" << yId << ", " << Regs[ACC][LONG] << "\n\tcltq\n";
+      fout << '\t' << opInstr << '\t' << Regs[ACC][QUAD] << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovq\t" << Regs[DX][QUAD] << ", " << zId << '\n';
+    }
+    
+  } else if( retType.isMatrix() ) {
+    // std::cerr << "Matrix add/sub" << std::endl;
+    fout << "\t#\t" << quad << '\n';
+  }
+  
+}
+
 void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {
-  const size_t BP = 6 , ACC = 0 , PTR = 1;
+  const size_t BP = 6 , ACC = 0 , CX = 2 , PTR = 3;
   switch(quad.opCode) {
     
   case OP_COPY : {
@@ -363,7 +436,7 @@ void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) 
     else if( type == MM_DOUBLE_TYPE ) movInstr = "movsd" , regName = XReg+"0" ;
     else if( type.isPointer() ) movInstr = "movq" , regName = Regs[ACC][QUAD] ;
     else if( type.isMatrix() ) {
-      // std::cerr << "#Matrix_copy" << std::endl;
+      // std::cerr << "#Matrix_copy" << std::endl; // TODO
       fout << "\t#" << quad << '\n';
       return ;
     }
@@ -437,7 +510,7 @@ void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) 
     DataType dataType ;
     std::tie( yId , dataType ) = getLocation( quad.y , stack );
     if( dataType == MM_INT_TYPE ) {
-      dataReg = Regs[2][LONG] ; movInstr = "movl";
+      dataReg = Regs[CX][LONG] ; movInstr = "movl";
     } else {
       dataReg = XReg+"0"; movInstr = "movsd";
     }
