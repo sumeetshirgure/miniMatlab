@@ -153,11 +153,12 @@ void mm_x86_64::generateTargetCode() {
     }
   }
 
-  /* Negating doubles. */
   fout << "\t.section\t.rodata\n";
-  fout << "\t.align 16\n.LNEGD:\n";
-  fout << "\t.long\t0\n\t.long\t-2147483648\n\t.long\t0\n\t.long\t0\n";
   
+  /* Negating doubles. */
+  fout << "\t.align 8\n.LNEGD:\n\t.long\t0\n\t.long\t-2147483648\n";
+  /* Float point unit. */
+  fout << "\t.align 8\n.LUNIT:\n\t.long\t0\n\t.long\t1072693248\n";
 }
 
 void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int rootId) {
@@ -212,6 +213,7 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   }
 
   std::sort( marks.begin() , marks.end() , std::greater<int>() );
+  
   stdRegs = 0 , fpRegs = 0;
   std::stack<std::string> paramCodes; // to be passed in reverse order
   int paramOffset = 0; // change in %rsp on caller side
@@ -219,7 +221,8 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
   for(unsigned int index = from + 1; index < to ; index++ ) {
     if( not marks.empty() and marks.back() == index ) {
       fout << ".L" << index << ":\n";
-      marks.pop_back();
+      while( not marks.empty() and marks.back() == index )
+	marks.pop_back();
     }
     const Taco & quad = mic.quadArray[index];
     if( quad.isJump() ) {
@@ -460,11 +463,15 @@ void mm_x86_64::emitPlusMinusOps(const Taco & quad , const ActivationRecord & st
       movInstr += 'l'; opInstr  += 'l';
       alphaReg = Regs[ACC][LONG] , betaReg = Regs[DX][LONG];
     } else { // MM_DOUBLE_TYPE
+      if( inc_dec ) {
+	yId = ".LUNIT(%rip)";
+	inc_dec = false ;
+      }
       movInstr += "sd"; opInstr += "sd";
       alphaReg = XReg+"0" , betaReg = XReg+"1";
     }
     fout << '\t' << movInstr << '\t' << xId << ", " << alphaReg << '\n';
-
+    
     if( inc_dec ) {
       fout << '\t' << opInstr << '\t' << alphaReg << '\n';
     } else {
