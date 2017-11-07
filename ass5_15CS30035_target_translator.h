@@ -65,7 +65,7 @@ public:
   /* Reference to machine independant code and data. */
   mm_translator & mic;
   
-  /* Output file stream to write generated .asm file. */
+  /* Output file stream to write generated .s file. */
   std::ofstream fout;
 
   /* Output the entire target code. */
@@ -94,6 +94,10 @@ public:
 
   /* Emit conversion operations. */
   void emitConversionOps(const Taco &,const ActivationRecord &);
+  
+  /* Emit memory (de)allocation operations. */
+  void emitAllocatorOps(const Taco &,const ActivationRecord &);
+  void emitDeallocatorOps(const Taco &,const ActivationRecord &);
 
   /* Auxiliary data */
   std::vector< std::pair<int,int> > usedConstants; // constant ids actually used

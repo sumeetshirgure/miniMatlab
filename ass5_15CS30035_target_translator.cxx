@@ -4,12 +4,12 @@ mm_x86_64::mm_x86_64 (mm_translator & translator)
   : mic(translator) {
   int len = mic.file.length();
   if( mic.file == "-" ) { // scanning from stdin
-    fout.open("mm.asm");
+    fout.open("mm.s");
   } else if( len < 3 or mic.file[len-3] != '.' or mic.file[len-2] != 'm' or mic.file[len-1] != 'm' ) {
     std::cerr << "Fatal error : " << mic.file << " : Not a .mm file" << std::endl;
     throw 1;
   } else {
-    std::string outFileName = mic.file.substr(0,mic.file.length()-3) + ".asm";
+    std::string outFileName = mic.file.substr(0,mic.file.length()-3) + ".s";
     fout.open(outFileName);
   }
   constIds = 0;
@@ -203,6 +203,15 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
     }
   }
   
+  for( Record record : stack.acR ) {
+    Symbol & symbol = record.first ;
+    if( symbol.type == MM_MATRIX_TYPE and symbol.symType == SymbolType::LOCAL ) {
+      // emitDeallocatorOps( Taco(OP_DEALLOC , symbol.id) , stack ) ;
+      std::string id = std::to_string(record.second) + "(" + Regs[BP][QUAD] + ")" ;
+      fout << "\tmovq\t$0, " << id << '\n'; // initialize with 0
+    }
+  }
+  
   std::vector<int> marks;
   // Mark potential target instructions of all gotos.
   for(unsigned int index = from + 1; index < to ; index++ ) {
@@ -243,6 +252,11 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 
     } else if( quad.isConversion() ) {
       emitConversionOps( quad , stack );
+
+    } else if( quad.opCode == OP_ALLOC ) {
+      emitAllocatorOps(quad , stack);
+    } else if( quad.opCode == OP_DEALLOC ) {
+      emitDeallocatorOps(quad , stack);
 
     } else if( quad.opCode == OP_MULT or quad.opCode == OP_DIV or quad.opCode == OP_MOD ) {
       emitMultDivOps( quad , stack );
@@ -285,13 +299,14 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 	  paramCodes.push( code );
 	}
       } else if( pType.isMatrix() ) {
+	std::string movInstr = (pType.isStaticMatrix() ? "leaq" : "movq") ;
 	std::string code;
 	if( stdRegs >= 6 ) {
 	  code = "\tpushq\t%rax\n"; paramCodes.push( code );
-	  code = "\tleaq"+pId+", %rax" ; paramCodes.push( code );
+	  code = "\t"+movInstr+pId+", %rax" ; paramCodes.push( code );
 	  paramOffset += 8;
 	} else {
-	  code = "\tleaq\t"+pId+", "+Regs[argRegs[stdRegs++]][QUAD]+'\n';
+	  code = "\t"+movInstr+"\t"+pId+", "+Regs[argRegs[stdRegs++]][QUAD]+'\n';
 	  paramCodes.push( code );
 	}
       } else { // pointers
@@ -329,12 +344,20 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
     } else fout << "\t#\t[" << quad << "]\n"; // TODO
   }
   
-  /* TODO : Emit function footer */
-  // Deallocate all memory on heap , and leave.
   fout << ".L" << to << ":\n";
+  fout << "\tpushq\t" << Regs[0][QUAD] << '\n';
+  fout << "\tleaq\t-8(%rsp), %rsp\n\tmovsd\t%xmm0, (%rsp)\n";
+  // Deallocate all memory on heap , and leave.
+  for( Record record : stack.acR ) {
+    Symbol & symbol = record.first ;
+    if( symbol.type == MM_MATRIX_TYPE and symbol.symType == SymbolType::LOCAL )
+      emitDeallocatorOps( Taco(OP_DEALLOC , symbol.id) , stack ) ;
+  }
+  fout << "\tmovsd\t(%rsp), %xmm0\n\tleaq\t8(%rsp), %rsp\n";
+  fout << "\tpopq\t" << Regs[0][QUAD] << '\n';
   fout << "\tleave\n\tret\n" ; // return statement
   fout << "\t.size\t" << rootTable.name << ", .-" << rootTable.name << '\n' ;
-
+  
   if( usedConstants.size() + usedStrings.size() > 0 )
     fout << "\t.section\t.rodata\n";
   for( const auto & cId : usedConstants ) {
@@ -505,6 +528,79 @@ void mm_x86_64::emitPlusMinusOps(const Taco & quad , const ActivationRecord & st
     fout << "\t#\t" << quad << '\n';
   }
   
+}
+
+void mm_x86_64::emitAllocatorOps(const Taco & quad , const ActivationRecord & stack) {
+  fout << "\t#\t" << quad << '\n';
+  
+  const size_t ACC = 0 , DI = 5 , SI = 4 , DX = 3 , CX = 2 ;
+  
+  std::string zId , xId , yId ;
+  DataType xType , yType ;
+  
+  std::tie( zId , std::ignore ) = getLocation( quad.z , stack );
+  
+  if( quad.y.empty() ) { // z = alloc( Matrix )
+    std::tie( xId , xType ) = getLocation( quad.x , stack );
+    if( xType.isStaticMatrix() ) fout << "\tleaq\t" ;
+    else fout << "\tmovq\t" ;
+    fout << xId << ", " << Regs[DX][QUAD] << '\n';
+    fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
+    fout << "\timull\t4(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+    fout << "\tincl\t" << Regs[DI][LONG] << '\n';
+    fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
+    fout << "\tcall\tcalloc\n" ;
+    fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+    
+  } else if( quad.x.empty() ) { // z = alloc( Matrix.' )
+    std::tie( yId , yType ) = getLocation( quad.y , stack );
+    if( yType.isStaticMatrix() ) fout << "\tleaq\t" ;
+    else fout << "\tmovq\t" ;
+    fout << yId << ", " << Regs[DX][QUAD] << '\n';
+    fout << "\tmovl\t4("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
+    fout << "\timull\t(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+    fout << "\tincl\t" << Regs[DI][LONG] << '\n';
+    fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
+    fout << "\tcall\tcalloc\n" ;
+    fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+    
+  } else { // z = alloc( Matrix , Matrix ) or alloc( int , int )
+    std::tie( xId , xType ) = getLocation( quad.x , stack );
+    std::tie( yId , yType ) = getLocation( quad.y , stack );
+    if( xType.isMatrix() and yType.isMatrix() ) { // multiplication
+      if( xType.isStaticMatrix() ) fout << "\tleaq\t" ;
+      else fout << "\tmovq\t" ;
+      fout << xId << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
+      if( yType.isStaticMatrix() ) fout << "\tleaq\t" ;
+      else fout << "\tmovq\t" ;
+      fout << yId << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\timull\t4(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+      fout << "\tincl\t" << Regs[DI][LONG] << '\n';
+      fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
+      fout << "\tcall\tcalloc\n" ;
+      fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+      
+    } else if( xType == MM_INT_TYPE and yType == MM_INT_TYPE ) {
+      fout << "\tmovl\t"  << xId << ", " << Regs[DI][LONG] << '\n'; // rows
+      fout << "\timull\t"  << yId << ", " << Regs[DI][LONG] << '\n'; // rows * columns
+      fout << "\tincl\t" << Regs[DI][LONG] << '\n';
+      fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
+      fout << "\tcall\tcalloc\n" ;
+      fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+      
+    }
+  }
+  
+}
+
+void mm_x86_64::emitDeallocatorOps(const Taco & quad , const ActivationRecord & stack) {
+  const size_t ACC = 0 , ARG1 = 5;
+  std::string zId ;
+  std::tie( zId , std::ignore ) = getLocation( quad.z , stack );
+  fout << "\tmovq\t" << zId << ", " << Regs[ARG1][QUAD] << '\n';
+  fout << "\tcall\tfree\n" ;
+  fout << "\tmovq\t$0, " << zId << '\n';
 }
 
 void mm_x86_64::emitUnaryMinusOps(const Taco & quad , const ActivationRecord & stack) {
