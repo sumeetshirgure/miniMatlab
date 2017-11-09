@@ -101,6 +101,6 @@ elif [ $asm -eq 1 ]; then
     ./compile $options ./$infile >$outfile
 else
     ./compile $options ./$infile >$outfile.s
-    gcc $outfile.s mmstd.o -o $outfile
+    gcc -lm $outfile.s mmstd.o -o $outfile
     rm -f $outfile.s
 fi

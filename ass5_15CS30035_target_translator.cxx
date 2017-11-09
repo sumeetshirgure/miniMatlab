@@ -415,7 +415,7 @@ void mm_x86_64::emitMultDivOps(const Taco & quad , const ActivationRecord & stac
   if( stack.constMap.find( quad.z ) != stack.constMap.end() )
     return ; // Ignore.
 
-  const size_t ACC = 0 , CX = 2 , DX = 3 , SI = 5 , DI = 5;
+  const size_t ACC = 0 , CX = 2 , DX = 3 , SI = 4 , DI = 5;
   DataType retType , xType , yType ;
   std::string zId , xId , yId , movInstr , opInstr ;
 
@@ -461,8 +461,44 @@ void mm_x86_64::emitMultDivOps(const Taco & quad , const ActivationRecord & stac
     }
     
   } else if( retType.isMatrix() ) {
-    // std::cerr << "Matrix mult / div" << std::endl; // TODO
-    fout << "\t#\t" << quad << '\n';
+    
+    if( yType.isMatrix() ) { // matrix multiplication
+      if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << zId << ", " << Regs[DI][QUAD] << '\n'; // first argument
+      if( xType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << xId << ", " << Regs[SI][QUAD] << '\n'; // second argument
+      if( yType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << yId << ", " << Regs[DX][QUAD] << '\n'; // third argument
+      fout << "\tcall\tmatMult\n" ;
+    } else {
+      
+      if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << zId << ", " << Regs[DI][QUAD] << '\n';
+    
+      if( xType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << xId << ", " << Regs[SI][QUAD] << '\n';
+      
+      fout << "\tmovsd\t" << yId << ", %xmm1\n";
+      fout << "\tmovq\t(" << Regs[DI][QUAD] <<"), " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovq\t(" << Regs[SI][QUAD] <<"), " << Regs[CX][QUAD] << '\n';
+      fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+      fout << "\tje\t.LTEMP" << ++tempLabels << "\n\tcall\tabort\n.LTEMP" << tempLabels << ":\n";
+      fout << "\tmovq\t$8, " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovl\t(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n';
+      fout << "\timull\t4(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n';
+      fout << "\tincl\t" << Regs[CX][LONG] << '\n';
+      fout << "\timull\t$8, " << Regs[CX][LONG] << '\n';
+      fout << ".LTEMP" << ++tempLabels << ":\n";
+      fout << "\tmovsd\t(" << Regs[SI][QUAD] << "," << Regs[DX][QUAD] <<"), %xmm0\n";
+      opInstr = ( quad.opCode == OP_MULT ? "mulsd" : "divsd" );
+      fout << '\t' << opInstr << "\t%xmm1, %xmm0\n";
+      fout << "\tmovsd\t%xmm0, (" << Regs[DI][QUAD] << "," << Regs[DX][QUAD] <<")\n";
+      fout << "\taddq\t$8, " << Regs[DX][QUAD] << '\n';
+      fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+      fout << "\tjg\t.LTEMP" << tempLabels << "\n";
+      
+    }
+    
   }
   
 }
