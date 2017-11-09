@@ -99,8 +99,11 @@ public:
   void emitAllocatorOps(const Taco &,const ActivationRecord &);
   void emitDeallocatorOps(const Taco &,const ActivationRecord &);
 
+  /* Emit opcodes to transpose a matrix. */
+  void emitTransposeOps(const Taco &,const ActivationRecord &);
+
   /* Auxiliary data */
   std::vector< std::pair<int,int> > usedConstants; // constant ids actually used
   std::vector< int > usedStrings; // string ids actually used
-  unsigned int constIds ;
+  unsigned int constIds , tempLabels ;
 };

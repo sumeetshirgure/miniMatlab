@@ -1339,6 +1339,8 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
       if(colSym.value.intVal<=0) throw syntax_error(@$,"Non-positive matrix dimension.");
       curSymbol.type.rows = rowSym.value.intVal;
       curSymbol.type.cols = colSym.value.intVal;
+      translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
+      translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));
     } else {
       unsigned int currEnv = translator.currentEnvironment();
       if( currEnv == 0 ) {// Check environment. Globally declared dynamic matrices should not be allowed.
@@ -1346,9 +1348,6 @@ IDENTIFIER "[" expression "]" "[" expression "]" {  // only 2-dimensions to be s
       }
       translator.emit(Taco(OP_ALLOC,curSymbol.id,rowSym.id,colSym.id)); // DogeMaster
     }
-    
-    translator.emit(Taco(OP_LXC,curSymbol.id,"0",rowSym.id));
-    translator.emit(Taco(OP_LXC,curSymbol.id,std::to_string(SIZE_OF_INT),colSym.id));
     
   } catch ( syntax_error se ) {
     throw se;

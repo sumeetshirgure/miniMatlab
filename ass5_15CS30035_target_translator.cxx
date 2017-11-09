@@ -4,6 +4,7 @@ mm_x86_64::mm_x86_64 (mm_translator & translator)
   : mic(translator) , fout(std::cout) {
   int len = mic.file.length();
   constIds = 0;
+  tempLabels = 0;
 }
 
 mm_x86_64::~mm_x86_64 () { }
@@ -330,7 +331,10 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
       else if( retType == MM_DOUBLE_TYPE ) fout << "\tmovsd\t%xmm0, "+retId+'\n';
       else fout << "\tmovq\t"+Regs[0][QUAD]+", "+retId+'\n'; // Poinrix / Matter
       
-    } else fout << "\t#\t[" << quad << "]\n"; // TODO
+    } else if( quad.opCode == OP_TRANSPOSE ) {
+      emitTransposeOps( quad , stack );
+      
+    }
   }
   
   fout << ".L" << to << ":\n";
@@ -361,11 +365,10 @@ void mm_x86_64::emitFunction(unsigned int from, unsigned int to, unsigned int ro
 }
 
 void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationRecord & stack) {
-  DataType retType = stack.retVal.type ;
-  if( retType != MM_VOID_TYPE ) {
-    const size_t BP = 6;
-    std::string retId ;
-    std::tie( retId , std::ignore ) = getLocation( quad.z , stack ) ;
+  if( stack.retVal.type != MM_VOID_TYPE ) {
+    const size_t BP = 6 , CX = 2 , DX = 3 , SI = 4 , DI = 5 ;
+    std::string retId ; DataType retType ;
+    std::tie( retId , retType ) = getLocation( quad.z , stack ) ;
     const size_t ACC = 0;
     std::string movInstr , regName ;
     if( retType == MM_CHAR_TYPE ) {
@@ -374,10 +377,34 @@ void mm_x86_64::emitReturnOps(int retLabel,const Taco & quad , const ActivationR
       movInstr = "movl" , regName = Regs[ACC][LONG];
     } else if( retType == MM_DOUBLE_TYPE ) {
       movInstr = "movsd" , regName = XReg+"0";
-    } else if( retType == MM_MATRIX_TYPE ) {
-      // TODO : Allocate memory for matrix to be returned and copy contents.
-      movInstr = "leaq" , regName = Regs[ACC][QUAD];
-    } else movInstr = "movq" , regName = Regs[ACC][QUAD]; // pointer
+    } else if( retType.isPointer() ) { // pointer
+      movInstr = "movq" , regName = Regs[ACC][QUAD];
+    } else if( retType.isMatrix() ) {
+      // Allocate memory for matrix to be returned and copy contents.
+      
+      if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << retId << ", " << Regs[DX][QUAD] << '\n';
+      
+      fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
+      fout << "\timull\t4(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+      fout << "\tincl\t" << Regs[DI][LONG] << '\n';
+      
+      fout << "\tmovq\t$8, "  << Regs[SI][QUAD] << '\n'; // size of each `element'
+      
+      fout << "\tmovslq\t" << Regs[SI][LONG] << ", " << Regs[14][QUAD] << '\n';
+      fout << "\timulq\t" << Regs[DI][QUAD] << ", " << Regs[14][QUAD] << '\n'; // save number of bytes
+      
+      fout << "\tcall\tcalloc\n" ;
+      
+      fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << Regs[15][QUAD] << '\n'; // save the pointer
+      
+      fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << Regs[DI][QUAD] << '\n'; // Destination pointer
+      if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << retId << ", " << Regs[SI][QUAD] << '\n'; // Source pointer
+      fout << "\tmovq\t" << Regs[14][QUAD] << ", " << Regs[DX][QUAD] << '\n'; // Number of bytes
+      fout << "\tcall\tmemcpy\n";
+      movInstr = "movq" , retId = Regs[15][QUAD] , regName = Regs[ACC][QUAD];
+    }
     fout << '\t' << movInstr << '\t' << retId << ", " << regName << '\n';
   }
   fout << "\tjmp\t.L" << retLabel << '\n';
@@ -531,9 +558,9 @@ void mm_x86_64::emitAllocatorOps(const Taco & quad , const ActivationRecord & st
   
   if( quad.y.empty() ) { // z = alloc( Matrix )
     std::tie( xId , xType ) = getLocation( quad.x , stack );
-    if( xType.isStaticMatrix() ) fout << "\tleaq\t" ;
-    else fout << "\tmovq\t" ;
+    if( xType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
     fout << xId << ", " << Regs[DX][QUAD] << '\n';
+    
     fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
     fout << "\timull\t4(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
     fout << "\tincl\t" << Regs[DI][LONG] << '\n';
@@ -541,11 +568,16 @@ void mm_x86_64::emitAllocatorOps(const Taco & quad , const ActivationRecord & st
     fout << "\tcall\tcalloc\n" ;
     fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
     
+    fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy
+    fout << "\tmovl\t"  << Regs[DI][LONG] << ", (" << Regs[ACC][QUAD] << ")\n"; // rows
+    fout << "\tmovl\t4("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy
+    fout << "\tmovl\t"  << Regs[DI][LONG] << ", 4(" << Regs[ACC][QUAD] << ")\n"; // cols
+    
   } else if( quad.x.empty() ) { // z = alloc( Matrix.' )
     std::tie( yId , yType ) = getLocation( quad.y , stack );
-    if( yType.isStaticMatrix() ) fout << "\tleaq\t" ;
-    else fout << "\tmovq\t" ;
+    if( yType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
     fout << yId << ", " << Regs[DX][QUAD] << '\n';
+    
     fout << "\tmovl\t4("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
     fout << "\timull\t(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
     fout << "\tincl\t" << Regs[DI][LONG] << '\n';
@@ -553,22 +585,35 @@ void mm_x86_64::emitAllocatorOps(const Taco & quad , const ActivationRecord & st
     fout << "\tcall\tcalloc\n" ;
     fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
     
+    fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy
+    fout << "\tmovl\t"  << Regs[DI][LONG] << ", (" << Regs[ACC][QUAD] << ")\n"; // rows
+    fout << "\tmovl\t4("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy
+    fout << "\tmovl\t"  << Regs[DI][LONG] << ", 4(" << Regs[ACC][QUAD] << ")\n"; // cols
+    
   } else { // z = alloc( Matrix , Matrix ) or alloc( int , int )
     std::tie( xId , xType ) = getLocation( quad.x , stack );
     std::tie( yId , yType ) = getLocation( quad.y , stack );
     if( xType.isMatrix() and yType.isMatrix() ) { // multiplication
-      if( xType.isStaticMatrix() ) fout << "\tleaq\t" ;
-      else fout << "\tmovq\t" ;
+      if( xType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
       fout << xId << ", " << Regs[DX][QUAD] << '\n';
+      
       fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows
-      if( yType.isStaticMatrix() ) fout << "\tleaq\t" ;
-      else fout << "\tmovq\t" ;
-      fout << yId << ", " << Regs[DX][QUAD] << '\n';
-      fout << "\timull\t4(" << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+      
+      if( yType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << yId << ", " << Regs[CX][QUAD] << '\n';
+      
+      fout << "\timull\t4(" << Regs[CX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // rows * columns
+      
       fout << "\tincl\t" << Regs[DI][LONG] << '\n';
       fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
       fout << "\tcall\tcalloc\n" ;
       fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+
+      fout << "\tmovl\t("  << Regs[DX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy from x
+      fout << "\tmovl\t"  << Regs[DI][LONG] << ", (" << Regs[ACC][QUAD] << ")\n"; // rows
+      fout << "\tmovl\t4("  << Regs[CX][QUAD] << "), " << Regs[DI][LONG] << '\n'; // copy from y
+      fout << "\tmovl\t"  << Regs[DI][LONG] << ", 4(" << Regs[ACC][QUAD] << ")\n"; // cols
+
       
     } else if( xType == MM_INT_TYPE and yType == MM_INT_TYPE ) {
       fout << "\tmovl\t"  << xId << ", " << Regs[DI][LONG] << '\n'; // rows
@@ -577,6 +622,11 @@ void mm_x86_64::emitAllocatorOps(const Taco & quad , const ActivationRecord & st
       fout << "\tmovl\t$8, "  << Regs[SI][LONG] << '\n'; // size of each `element'
       fout << "\tcall\tcalloc\n" ;
       fout << "\tmovq\t" << Regs[ACC][QUAD] << ", " << zId << '\n';
+
+      fout << "\tmovl\t"  << xId << ", " << Regs[DI][LONG] << '\n'; // copy
+      fout << "\tmovl\t"  << Regs[DI][LONG] << ", (" << Regs[ACC][QUAD] << ")\n"; // rows
+      fout << "\tmovl\t"  << yId << ", " << Regs[DI][LONG] << '\n'; // copy
+      fout << "\tmovl\t"  << Regs[DI][LONG] << ", 4(" << Regs[ACC][QUAD] << ")\n"; // cols
       
     }
   }
@@ -596,14 +646,38 @@ void mm_x86_64::emitUnaryMinusOps(const Taco & quad , const ActivationRecord & s
   if( stack.constMap.find( quad.z ) != stack.constMap.end() )
     return ; // Ignore.
 
-  const size_t ACC = 0;
-  DataType retType ;
+  const size_t ACC = 0 , CX = 2 , DX = 3 , SI = 4 , DI = 5 ;
+  DataType retType , rType ;
   std::string zId , xId;
   std::tie( zId , retType ) = getLocation( quad.z , stack );
-  std::tie( xId , std::ignore ) = getLocation( quad.x , stack );
+  std::tie( xId , rType ) = getLocation( quad.x , stack );
   if( retType.isMatrix() ) {
-    // std::cerr << "" << std::endl; // TODO
-    fout << "\t#\t" << quad << '\n';
+    
+    if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+    fout << zId << ", " << Regs[DI][QUAD] << '\n';
+    
+    if( rType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+    fout << xId << ", " << Regs[SI][QUAD] << '\n';
+    
+    fout << "\tmovq\t(" << Regs[DI][QUAD] <<"), " << Regs[DX][QUAD] << '\n';
+    fout << "\tmovq\t(" << Regs[SI][QUAD] <<"), " << Regs[CX][QUAD] << '\n';
+    fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+    fout << "\tje\t.LTEMP" << ++tempLabels << "\n\tcall\tabort\n.LTEMP" << tempLabels << ":\n";
+    
+    fout << "\tmovq\t$8, " << Regs[DX][QUAD] << '\n';
+    fout << "\tmovl\t(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n';
+    fout << "\timull\t4(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n';
+    fout << "\tincl\t" << Regs[CX][LONG] << '\n';
+    fout << "\timull\t$8, " << Regs[CX][LONG] << '\n';
+    fout << "\tmovsd\t.LNEGD(%rip), %xmm1\n" ;
+    fout << ".LTEMP" << ++tempLabels << ":\n";
+    fout << "\tmovsd\t(" << Regs[SI][QUAD] << "," << Regs[DX][QUAD] <<"), %xmm0\n";
+    fout << "\txorpd\t%xmm1, %xmm0\n" ;
+    fout << "\tmovsd\t%xmm0, (" << Regs[DI][QUAD] << "," << Regs[DX][QUAD] <<")\n";
+    fout << "\taddq\t$8, " << Regs[DX][QUAD] << '\n';
+    fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+    fout << "\tjge\t.LTEMP" << tempLabels << "\n";
+    
   } else {
     if( retType == MM_CHAR_TYPE ) {
       fout << "\tmovb\t" << xId << ", " << Regs[ACC][BYTE] << '\n';
@@ -621,6 +695,55 @@ void mm_x86_64::emitUnaryMinusOps(const Taco & quad , const ActivationRecord & s
       fout << "\tmovsd\t%xmm0, " << zId << '\n';
     }
   }
+}
+
+void mm_x86_64::emitTransposeOps(const Taco & quad , const ActivationRecord & stack) {
+  const size_t ACC = 0 , CX = 2 , DX = 3 , SI = 4 , DI = 5 ;
+  std::cerr << "!!\t#" << quad << std::endl;
+  DataType retType , rType ;
+  std::string zId , xId;
+  std::tie( zId , retType ) = getLocation( quad.z , stack );
+  std::tie( xId , rType ) = getLocation( quad.x , stack );
+      
+  if( retType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+  fout << zId << ", " << Regs[DI][QUAD] << '\n';
+    
+  if( rType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+  fout << xId << ", " << Regs[SI][QUAD] << '\n';
+  
+  fout << "\tmovq\t(" << Regs[DI][QUAD] <<"), " << Regs[DX][QUAD] << '\n';
+  fout << "\tmovq\t(" << Regs[SI][QUAD] <<"), " << Regs[CX][QUAD] << '\n';
+  fout << "\tror\t$32, " << Regs[CX][QUAD] << '\n'; // `swap'
+  fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+  fout << "\tje\t.LTEMP" << ++tempLabels << "\n\tcall\tabort\n.LTEMP" << tempLabels << ":\n";
+  
+  fout << "\tmovq\t$8, " << Regs[8][QUAD] << '\n';
+  fout << "\tmovq\t$8, " << Regs[9][QUAD] << '\n';
+  
+  fout << "\tmovl\t4(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n'; // number of cols in destination matrix
+  
+  fout << "\tmovslq\t" << Regs[CX][LONG] <<", " << Regs[DX][QUAD] << '\n';
+  fout << "\timulq\t$8, " << Regs[DX][QUAD] << '\n'; // 8 * cols
+  
+  fout << "\timull\t(" << Regs[DI][QUAD] <<"), " << Regs[CX][LONG] << '\n'; // rows * cols
+  fout << "\tincl\t" << Regs[CX][LONG] << '\n'; // rc + 1
+  fout << "\timull\t$8, " << Regs[CX][LONG] << '\n'; // size in bytes
+  fout << "\tmovslq\t" << Regs[CX][LONG] << ", " << Regs[CX][QUAD] << '\n';
+  
+  fout << ".LTEMP" << ++tempLabels << ":\n"; // main loop
+  fout << "\tmovsd\t(" << Regs[SI][QUAD] << "," << Regs[8][QUAD] <<"), %xmm0\n";
+  fout << "\tmovsd\t%xmm0, (" << Regs[DI][QUAD] << "," << Regs[9][QUAD] <<")\n";
+  
+  fout << "\taddq\t$8, " << Regs[8][QUAD] << '\n';
+  fout << "\taddq\t" << Regs[DX][QUAD] << ", " << Regs[9][QUAD] << '\n';
+
+  fout << "\tcmpq\t" << Regs[9][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+  fout << "\tjl\t.LTEMP" << ++tempLabels << '\n';
+  fout << "\tsubq\t" << Regs[CX][QUAD] << ", " << Regs[9][QUAD] << '\n';
+  fout << ".LTEMP" << tempLabels << ":\n";
+  
+  fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+  fout << "\tjge\t.LTEMP" << tempLabels-1 << "\n";
 }
 
 void mm_x86_64::emitConversionOps(const Taco & quad , const ActivationRecord & stack) {
@@ -666,23 +789,40 @@ void mm_x86_64::emitConversionOps(const Taco & quad , const ActivationRecord & s
 }
 
 void mm_x86_64::emitCopyOps(const Taco & quad , const ActivationRecord & stack) {
-  const size_t BP = 6 , ACC = 0 , CX = 2 , PTR = 3;
+  const size_t BP = 6 , ACC = 0 , CX = 2 , DX = 3 , SI = 4 , DI = 5 , PTR = 3;
   switch(quad.opCode) {
     
   case OP_COPY : {
     if( stack.constMap.find( quad.z ) != stack.constMap.end() )
       return ; // Ignore.
     std::string lId , rId , movInstr , regName ;
-    DataType type ;
+    DataType type , rType ;
     std::tie( lId , type ) = getLocation( quad.z , stack );
-    std::tie( rId , std::ignore ) = getLocation( quad.x , stack );
+    std::tie( rId , rType ) = getLocation( quad.x , stack );
     if( type == MM_CHAR_TYPE ) movInstr = "movb" , regName = Regs[ACC][BYTE] ;
     else if( type == MM_INT_TYPE ) movInstr = "movl" , regName = Regs[ACC][LONG] ;
     else if( type == MM_DOUBLE_TYPE ) movInstr = "movsd" , regName = XReg+"0" ;
     else if( type.isPointer() ) movInstr = "movq" , regName = Regs[ACC][QUAD] ;
     else if( type.isMatrix() ) {
-      // std::cerr << "#Matrix_copy" << std::endl; // TODO
-      fout << "\t#" << quad << '\n';
+      
+      if( type.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << lId << ", " << Regs[DI][QUAD] << '\n';
+
+      if( rType.isStaticMatrix() ) fout << "\tleaq\t" ; else fout << "\tmovq\t" ;
+      fout << rId << ", " << Regs[SI][QUAD] << '\n';
+      
+      fout << "\tmovq\t(" << Regs[DI][QUAD] <<"), " << Regs[DX][QUAD] << '\n';
+      fout << "\tmovq\t(" << Regs[SI][QUAD] <<"), " << Regs[CX][QUAD] << '\n';
+      fout << "\tcmpq\t" << Regs[DX][QUAD] << ", " << Regs[CX][QUAD] << '\n';
+      fout << "\tje\t.LTEMP" << ++tempLabels << "\n\tcall\tabort\n.LTEMP" << tempLabels << ":\n";
+      
+      fout << "\tmovl\t(" << Regs[DI][QUAD] <<"), " << Regs[DX][LONG] << '\n';
+      fout << "\timull\t4(" << Regs[DI][QUAD] <<"), " << Regs[DX][LONG] << '\n';
+      fout << "\tincl\t" << Regs[DX][LONG] << '\n';
+      fout << "\timull\t$8, " << Regs[DX][LONG] << '\n';
+      fout << "\tmovslq\t" << Regs[DX][LONG] << ", " << Regs[DX][QUAD] << '\n';
+      fout << "\tcall\tmemcpy\n" ;
+      
       return ;
     }
     fout << '\t' << movInstr << '\t' << rId << ", " << regName << '\n';
