@@ -1,23 +1,12 @@
 #include "ass5_15CS30035_target_translator.h"
 
 mm_x86_64::mm_x86_64 (mm_translator & translator)
-  : mic(translator) {
+  : mic(translator) , fout(std::cout) {
   int len = mic.file.length();
-  if( mic.file == "-" ) { // scanning from stdin
-    fout.open("mm.s");
-  } else if( len < 3 or mic.file[len-3] != '.' or mic.file[len-2] != 'm' or mic.file[len-1] != 'm' ) {
-    std::cerr << "Fatal error : " << mic.file << " : Not a .mm file" << std::endl;
-    throw 1;
-  } else {
-    std::string outFileName = mic.file.substr(0,mic.file.length()-3) + ".s";
-    fout.open(outFileName);
-  }
   constIds = 0;
 }
 
-mm_x86_64::~mm_x86_64 () {
-  fout.close();
-}
+mm_x86_64::~mm_x86_64 () { }
 
 std::tuple< std::string , DataType >
 mm_x86_64::getLocation (const std::string & addr,const ActivationRecord & stack) {
@@ -978,7 +967,6 @@ int main( int argc , char * argv[] ){
       emit_mic = true;
     } else {
       int result;
-      
       try {
 	mm_translator translator(cmd);
 	translator.trace_parse = trace_parse;
@@ -988,23 +976,25 @@ int main( int argc , char * argv[] ){
 	result = translator.translate();
 	
 	if(result != 0) {
-	  throw 1;
-	}
-        
-	if( emit_mic ) {
-	  translator.emit_MIC();
-	  cout << cmd << " : Translation completed successfully " << endl;
+	  cerr << cmd << " : Translation failed" << endl;
+	  return 1;
 	}
 	
-	/* Construct a target code generator */
-	mm_x86_64 generator(translator);
-	generator.generateTargetCode();
+	if( emit_mic ) { /* Generate machine-independant code */
+	  translator.emit_MIC();
+	} else { /* Generate target code */
+	  mm_x86_64 generator(translator);
+	  generator.generateTargetCode();
+	}
+
+	return 0;
       } catch ( ... ) {
 	cerr << cmd << " : Compilation failed" << endl;
+	return 1;
       }
-      
     }
   }
   
-  return 0;
+  cerr << "Error : no input files" << endl;
+  return 1;
 }

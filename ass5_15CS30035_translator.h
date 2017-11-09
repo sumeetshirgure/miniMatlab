@@ -54,7 +54,7 @@ public:
   bool trace_parse;
 
   // output stream
-  std::ofstream fout;
+  std::ostream & fout;
   
   // error handlers
   void error(const yy::location&,const std::string&);

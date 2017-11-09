@@ -4,7 +4,7 @@
 
 /* Constructor for translator */
 mm_translator::mm_translator(const std::string &_file) :
-  trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) , auxTable(0,"") {
+  trace_scan(false) , trace_parse(false) , trace_tacos(false) , file(_file) , auxTable(0,"") , fout(std::cout) {
   needsDefinition = false;
   parameterDeclaration = false;
   temporaryCount = 0; // initialize tempCount to 0  
@@ -198,17 +198,6 @@ void mm_translator::patchBack(std::list<unsigned int>& quadList,unsigned int add
 }
 
 void mm_translator::emit_MIC() {
-  int len = file.length();
-  if( file == "-" ) { // scanning from stdin
-    fout.open("mm.out");
-  } else if( len < 3 or file[len-3] != '.' or file[len-2] != 'm' or file[len-1] != 'm' ) {
-    std::cerr << "Fatal error : " << file << " : Not a .mm file" << std::endl;
-    throw 1;
-  } else {
-    std::string outFileName = file.substr(0,file.length()-3) + ".out";
-    fout.open(outFileName);
-  }
-  
   fout << file << " : Translated code :\n";
   fout << "3 Address codes :\n";
   printQuadArray();
@@ -229,8 +218,6 @@ void mm_translator::emit_MIC() {
   
   for(int i=0;i<100;i++)fout<<'*';
   fout << '\n';
-  
-  fout.close();
 }
 
 /**************************************************************************************************/

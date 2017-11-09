@@ -65,8 +65,8 @@ public:
   /* Reference to machine independant code and data. */
   mm_translator & mic;
   
-  /* Output file stream to write generated .s file. */
-  std::ofstream fout;
+  /* Output stream to write generated .s file. */
+  std::ostream & fout;
 
   /* Output the entire target code. */
   void generateTargetCode();

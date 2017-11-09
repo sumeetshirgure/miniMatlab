@@ -1,0 +1,106 @@
+#!/bin/bash
+
+help()
+{
+    echo "miniMatlab compiler."
+    echo "Usage : mmc [-S ^ -m] [-p|-s|-t] [-o outfile] *.mm"
+    echo "  -h | --help : Show this help text."
+    echo "  -S | --assembly : Generate assembly file."
+    echo "  -m | --emit-mic : Generate machine - independant code. Only one of these files is generated."
+    echo "  -s | --trace-scan : Trace lexer's scan."
+    echo "  -p | --trace-parse : Trace parse."
+    echo "  -t | --trace-tacos : Trace three-address codes."
+}
+
+asm=0
+mic=0
+tp=0
+ts=0
+tc=0
+outfile=""
+infile=""
+
+while [ "$1" != "" ]; do
+    case $1 in
+	-o | --output ) shift
+			if [ "$outfile" != "" ]; then
+			    echo "Only one file can be set as output:"
+			    echo "Specified : $outfile"
+			    echo "Also specified : $1"
+			    exit 1
+			else
+			    outfile=$1
+			fi
+			;;
+	-S | --assembly ) asm=1
+			  ;;
+	-m | --emit-mic ) mic=1
+			  ;;
+	-p | --trace-parse ) tp=1
+			     ;;
+	-s | --trace-scan ) ts=1
+			    ;;
+	-t | --trace-tacos ) tc=1
+			     ;;
+	-h | --help ) help
+		      exit 0
+		      ;;
+	* ) if [ "$infile" != "" ]; then
+		echo "Error : only one file can be compiled at a time:"
+		echo "Specified : $infile"
+		echo "Also specified : $1"
+		exit 1
+	    else
+		infile=$1
+	    fi
+	    ;;
+    esac
+    shift
+done
+
+if [ $mic -eq 1 ] && [ $asm -eq 1 ] ; then
+    echo "Only one of -S and -m can be set."
+    exit 1
+fi
+
+if [ "$infile" == "" ]; then
+    echo "Error : no input files specified."
+    exit 1
+fi
+
+if [ "$outfile" == "" ]; then
+    if [ $asm -eq 1 ]; then
+	outfile="$infile.asm"
+    elif [ $mic -eq 1 ]; then
+	outfile="$infile.out"
+    else
+	outfile="a.out"
+    fi
+fi
+
+if [ "$infile" == "$outfile" ]; then
+    echo "Error : input and output files are same."
+    exit 1
+fi
+
+options=""
+if [ $tp -eq 1 ]; then
+    options+="--trace-parse"
+fi
+if [ $ts -eq 1 ]; then
+    options+="--trace-scan"
+fi
+if [ $tc -eq 1 ]; then
+    options+="--trace-tacos"
+fi
+
+if [ $mic -eq 1 ]; then
+    options+="--emit-mic"
+    ./compile $options ./$infile >$outfile
+elif [ $asm -eq 1 ]; then
+    ./compile $options ./$infile >$outfile
+else
+    ./compile $options ./$infile >$outfile.s
+    gcc $outfile.s mmstd.o -o $outfile
+    rm -f $outfile.s
+fi
