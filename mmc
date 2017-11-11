@@ -85,17 +85,17 @@ fi
 
 options=""
 if [ $tp -eq 1 ]; then
-    options+="--trace-parse"
+    options+="--trace-parse "
 fi
 if [ $ts -eq 1 ]; then
-    options+="--trace-scan"
+    options+="--trace-scan "
 fi
 if [ $tc -eq 1 ]; then
-    options+="--trace-tacos"
+    options+="--trace-tacos "
 fi
 
 if [ $mic -eq 1 ]; then
-    options+="--emit-mic"
+    options+="--emit-mic "
     ./compile $options ./$infile >$outfile
 elif [ $asm -eq 1 ]; then
     ./compile $options ./$infile >$outfile
