@@ -1061,12 +1061,11 @@ void mm_x86_64::emitJumpOps(const Taco & quad , const ActivationRecord & stack) 
     // Compare operands
     fout << '\t' << cmpInstr << '\t' << rId << " , " << regName << "\n\t";
     switch( quad.opCode ) {
-    case OP_LT : fout << "jl" ; break;
-    case OP_LTE : fout << "jle" ; break;
-    case OP_GT : fout << "jg" ; break;
-    case OP_GTE : fout << "jge" ; break;
-    case OP_EQ : fout << "je" ; break;
-    case OP_NEQ : fout << "jne" ; break;
+    case OP_LT : if( type == MM_DOUBLE_TYPE ) fout << "jb" ; else fout << "jl" ; break;
+    case OP_LTE : if( type == MM_DOUBLE_TYPE ) fout << "jbe" ; else fout << "jle" ; break;
+    case OP_GT : if( type == MM_DOUBLE_TYPE ) fout << "ja" ; else fout << "jg" ;break;
+    case OP_GTE : if( type == MM_DOUBLE_TYPE ) fout << "jae" ; else fout << "jge" ;break;
+    case OP_EQ : fout << "je" ; break; case OP_NEQ : fout << "jne" ; break;
     default : break;
     };
     fout << "\t.L" << quad.z << '\n';
