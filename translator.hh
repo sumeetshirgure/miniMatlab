@@ -10,22 +10,22 @@
 #include <ext/pb_ds/tree_policy.hpp>
 
 /* For determining return type of yylex */
-#include "ass5_15CS30035.tab.hh"
+#include "parser.tab.hh"
 
 #define YY_DECL yy::mm_parser::symbol_type yylex(mm_translator& translator)
 YY_DECL;
 
 /* Include 3 address code definitions */
-#include "quads.h"
+#include "quads.hh"
 
 /* Include datatype definitions */
-#include "types.h"
+#include "types.hh"
 
 /* Include symbol definitions */
-#include "symbols.h"
+#include "symbols.hh"
 
 /* Include expression definitions */
-#include "expressions.h"
+#include "expressions.hh"
 
 /* A map from string identifiers to symbols */
 typedef __gnu_pbds::trie< std::string,  SymbolRef ,

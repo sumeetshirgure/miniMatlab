@@ -1,7 +1,7 @@
 #ifndef MM_EXPRESSION_H
 #define MM_EXPRESSION_H
 
-#include "symbols.h"
+#include "symbols.hh"
 #include <list>
 
 typedef std::list<unsigned int> AddressList;

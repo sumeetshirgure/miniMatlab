@@ -1,4 +1,4 @@
-#include "symbols.h"
+#include "symbols.hh"
 #include <iomanip>
 
 Symbol::Symbol ( ) :

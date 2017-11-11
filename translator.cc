@@ -1,5 +1,5 @@
-#include "ass5_15CS30035_translator.h"
-#include "ass5_15CS30035.tab.hh"
+#include "translator.hh"
+#include "parser.tab.hh"
 #include <iomanip>
 
 /* Constructor for translator */

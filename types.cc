@@ -1,4 +1,4 @@
-#include "types.h"
+#include "types.hh"
 
 DataType::DataType(const DataType & type) :
   pointers(type.pointers) , rows(type.rows) , cols(type.cols) { }

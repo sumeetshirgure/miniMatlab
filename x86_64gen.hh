@@ -1,4 +1,4 @@
-#include "ass5_15CS30035_translator.h"
+#include "translator.hh"
 
 /* A map from string identifiers to locations on tables. */
 typedef __gnu_pbds::trie<std::string, unsigned int ,

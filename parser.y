@@ -16,9 +16,9 @@
 
 %code requires {
 #include <string>
-#include "types.h"
-#include "symbols.h"
-#include "expressions.h"
+#include "types.hh"
+#include "symbols.hh"
+#include "expressions.hh"
 
   class mm_translator;
  }
@@ -28,7 +28,7 @@
 
 %code {
   /* Include translator definitions completely */
-#include "ass5_15CS30035_translator.h"
+#include "translator.hh"
   
   /* Helper functions to get dereferenced symbols for scalars
    * Only used when Expression is known to be non-matrix type. */

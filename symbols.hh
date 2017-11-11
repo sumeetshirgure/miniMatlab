@@ -4,7 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include "types.h"
+#include "types.hh"
 
 /* Typedef for storing "pointer" to symbol entry 
    first value is table index and second value is entry index in table.

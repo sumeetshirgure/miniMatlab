@@ -1,4 +1,4 @@
-#include "quads.h"
+#include "quads.hh"
 
 bool Taco::isJump() const {
   return OP_IF_VAL <= opCode and opCode <= OP_GOTO ;

@@ -1,31 +1,37 @@
-generator = ass5_15CS30035_target_translator.cxx
-translator_defns = ass5_15CS30035_translator.cxx quads.cc types.cc symbols.cc expressions.cc
-parser_defn = ass5_15CS30035.tab.cc
+generator = x86_64gen.cc
+translator_defns = translator.cc quads.cc types.cc symbols.cc expressions.cc
+parser_defn = parser.tab.cc
 scanner_defn = lex.yy.c
 FILES = $(generator) $(translator_defns) $(parser_defn) $(scanner_defn)
 FLAGS = -std=c++11 -O2 #-g
 
 all : build clean
 
-build : scanner_files parser_files translator_files quad_files
+build : scanner_files parser_files translator_files quad_files expression_files symbols_files types_files
 	@(echo "This may take a few seconds...")
 	g++ $(FLAGS) $(FILES) -o ./compile
 
-quad_files : quads.h quads.cc
+quad_files : quads.cc quads.hh
+
+expression_files : expressions.cc expressions.hh
+
+symbols_files : symbols.cc symbols.hh
+
+types_files : types.cc types.hh
 
 scanner_files : lex.yy.c
 
-lex.yy.c : translator_files parser_files ass5_15CS30035.l
-	flex ass5_15CS30035.l
+lex.yy.c : translator_files parser_files lexer.l
+	flex lexer.l
 
-parser_files : ass5_15CS30035.tab.cc
+parser_files : parser.tab.cc
 
-ass5_15CS30035.tab.cc : ass5_15CS30035.tab.hh
+parser.tab.cc : parser.tab.hh
 
-ass5_15CS30035.tab.hh : translator_files ass5_15CS30035.y
-	bison --language=c++ ass5_15CS30035.y
+parser.tab.hh : translator_files parser.y
+	bison --language=c++ parser.y
 
-translator_files : ass5_15CS30035_translator.h ass5_15CS30035_translator.cxx
+translator_files : translator.hh translator.cc
 
 clean : remove_generated_headers remove_tab_files remove_scanner_files remove_garbage
 
@@ -33,7 +39,7 @@ remove_generated_headers :
 	rm -f ./location.hh ./position.hh ./stack.hh
 
 remove_tab_files :
-	rm -f ./ass5_15CS30035.tab.hh ./ass5_15CS30035.tab.cc
+	rm -f ./parser.tab.hh ./parser.tab.cc
 
 remove_scanner_files :
 	rm -f ./lex.yy.c
