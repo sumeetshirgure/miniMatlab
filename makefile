@@ -5,11 +5,14 @@ scanner_defn = lex.yy.c
 FILES = $(generator) $(translator_defns) $(parser_defn) $(scanner_defn)
 FLAGS = -std=c++11 -O2 #-g
 
-all : build clean
+all : build mmstd.o clean
 
 build : scanner_files parser_files translator_files quad_files expression_files symbols_files types_files
 	@(echo "This may take a few seconds...")
 	g++ $(FLAGS) $(FILES) -o ./compile
+
+mmstd.o : mmstd.c
+	gcc -c mmstd.c
 
 quad_files : quads.cc quads.hh
 
